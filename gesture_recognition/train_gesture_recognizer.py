@@ -5,7 +5,7 @@ import tensorflow as tf
 from mediapipe_model_maker import gesture_recognizer
 
 #dataset_path = "/home/felix/Downloads/rps_data_sample"
-dataset_path = "training_data"
+dataset_path = "../data/training"
 
 print(dataset_path)
 
@@ -42,7 +42,7 @@ def show_sample_images():
 def get_data():
     data = gesture_recognizer.Dataset.from_folder(
         dirname=dataset_path,
-        hparams=gesture_recognizer.HandDataPreprocessingParams()
+        hparams=gesture_recognizer.HandDataPreprocessingParams(shuffle=True)
     )
     train_data, rest_data = data.split(0.8)
     validation_data, test_data = rest_data.split(0.5)

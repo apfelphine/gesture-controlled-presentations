@@ -1,6 +1,6 @@
 # Hand gesture based presentation control
 
-## Setup (for developers)
+## Developer Setup
 
 1. Download the mediapipe tasks for hand landmark recognition and pose landmark recognition 
 and place them in a `tasks` directory. The models are available under the following links:
@@ -18,3 +18,13 @@ The following gestures are supported:
    - no-point
    - 2finger
    - thumbs-up
+
+3. Install virtual environments. There are two requirement freezes given - one for Windows (`requirements_windows.txt`) 
+and one for Linux (`requirements_linux.txt`). Be aware that training the custom gesture recognizer will only work on
+Linux! In order to install the requirements from the file execute the following commands. The python version used is 3.11.2.
+
+```shell
+virtualenv <env_name>
+$ source <env_name>/bin/activate
+(<env_name>)$ pip install -r requirements.txt
+```

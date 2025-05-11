@@ -5,21 +5,22 @@ import mediapipe as mp
 import numpy as np
 
 from PIL import Image
+from mediapipe.python.solutions.pose import PoseLandmark
 from tqdm import tqdm
 from typing import List, Tuple, Literal
 
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-# CONFIG
 VIDEOS_PATH = "../data/videos"
 OUTPUT_BASE_PATH = "../data/cropped_hands"
 
-# CODE
-VISIBILITY_THRESHOLD = 0  # Minimum visibility in pose to count a hand as detected
-BUFFER_PERCENTAGE = 2.0  # Percentage to extend detected rectangle by
+FINAL_IMAGE_SIZE = 256
 
-mp_pose_detection = mp.solutions.pose
+VISIBILITY_THRESHOLD = 0.2  # Minimum visibility in pose to count a hand as detected
+POSE_HAND_BUFFER_PERCENTAGE = 4.0  # Percentage to extend detected palm rectangle by for hand landmark recognition
+HAND_LANDMARK_MIN_CONFIDENCE = 0.5  # Minimum confidence to detect hand landmarks
+HAND_LANDMARK_BUFFER_PERCENTAGE = 0.5  # Percentage to extend detected hand by for final image
 
 pose_options = vision.PoseLandmarkerOptions(
     base_options=python.BaseOptions(model_asset_path='../tasks/pose_landmarker_heavy.task'),
@@ -31,7 +32,7 @@ hand_options = vision.HandLandmarkerOptions(
     base_options=python.BaseOptions(model_asset_path='../tasks/hand_landmarker.task'),
     num_hands=1,
     running_mode=vision.RunningMode.VIDEO,
-    min_hand_detection_confidence=0.1
+    min_hand_detection_confidence=HAND_LANDMARK_MIN_CONFIDENCE
 )
 
 
@@ -65,7 +66,7 @@ def get_frames(path: str):
         capture.release()
 
 
-def bounding_square(points: List[Tuple[float, float]], buffer_percent: float = 0.0) -> Tuple[
+def bounding_square(points: List[Tuple[float, float]], max_width, max_height, buffer_percent: float = 0.0) -> Tuple[
     Tuple[float, float], Tuple[float, float]]:
     if not points:
         raise ValueError("Point list is empty")
@@ -85,6 +86,11 @@ def bounding_square(points: List[Tuple[float, float]], buffer_percent: float = 0
     max_x += x_buffer
     min_y -= y_buffer
     max_y += y_buffer
+
+    min_x = max(0, min_x)
+    min_y = max(0, min_y)
+    max_x = min(max_width-1, max_x)
+    max_y = min(max_height-1, max_y)
 
     # Make it square
     width = max_x - min_x
@@ -110,21 +116,21 @@ def get_hand_rectangle(pose, index, frame, hand: Literal["left", "right"]):
     result = pose.detect_for_video(mp_image, index)
 
     indices = [
-        mp_pose_detection.PoseLandmark.LEFT_WRIST, mp_pose_detection.PoseLandmark.LEFT_PINKY,
-        mp_pose_detection.PoseLandmark.LEFT_THUMB, mp_pose_detection.PoseLandmark.LEFT_INDEX
+        PoseLandmark.LEFT_WRIST, PoseLandmark.LEFT_PINKY,
+        PoseLandmark.LEFT_THUMB, PoseLandmark.LEFT_INDEX
     ]
     if hand == "right":
         indices = [
-            mp_pose_detection.PoseLandmark.RIGHT_WRIST, mp_pose_detection.PoseLandmark.RIGHT_PINKY,
-            mp_pose_detection.PoseLandmark.RIGHT_THUMB, mp_pose_detection.PoseLandmark.RIGHT_INDEX
+            PoseLandmark.RIGHT_WRIST, PoseLandmark.RIGHT_PINKY,
+            PoseLandmark.RIGHT_THUMB, PoseLandmark.RIGHT_INDEX
         ]
 
     if result.pose_landmarks:
         landmarks = [list(result.pose_landmarks)[0][index] for index in indices]
         points = [(int(lm.x * width), int(lm.y * height)) for lm in landmarks]
         visibilities = [lm.visibility for lm in landmarks]
-        visibility = min(visibilities)
-        return bounding_square(points, BUFFER_PERCENTAGE), visibility
+        min_visibility = min(visibilities)
+        return bounding_square(points, width, height, POSE_HAND_BUFFER_PERCENTAGE), min_visibility
     return ((0, 0), (0, 0)), 0
 
 
@@ -152,13 +158,53 @@ def resize(img, width, height):
     return img
 
 
+def detect_and_write_hand(
+    hand_recogniser, pose_recogniser, frame, index: int, hand: Literal["left", "right"], out_video, out_path
+):
+    rect, visibility = get_hand_rectangle(pose_recogniser, index, frame, hand)
+
+    if visibility >= VISIBILITY_THRESHOLD:
+        cropped_palm = draw_cropped(frame, rect)
+
+        if cropped_palm is not None and len(cropped_palm) != 0:
+            cropped_palm_resized = resize(cropped_palm, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE)
+            res = hand_recogniser.detect_for_video(
+                mp.Image(image_format=mp.ImageFormat.SRGB, data=cropped_palm_resized),
+                index
+            )
+            if res.hand_landmarks:
+                points = [
+                    (int(lm.x * FINAL_IMAGE_SIZE), int(lm.y * FINAL_IMAGE_SIZE))
+                    for lm in list(res.hand_landmarks)[0]
+                ]
+
+                square = bounding_square(points, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE, HAND_LANDMARK_BUFFER_PERCENTAGE)
+                cropped_hand = draw_cropped(cropped_palm_resized, square)
+
+                try:
+                    final_hand = resize(cropped_hand, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE)
+                    out_video.write(final_hand)
+                    cv2.imwrite(
+                        os.path.join(out_path, str(index) + ".png"),
+                        final_hand
+                    )
+                except Exception:
+                    frame_with_points = cropped_palm_resized.copy()
+                    for p in points:
+                        frame_with_points = cv2.circle(frame_with_points, p, 1, (0,0,255), -1)
+                    cv2.imshow("AAAA", frame_with_points)
+                    if cv2.waitKey(1) & 0xFF == 27:
+                        exit(0)
+                    pass
+
+
 def main():
     for path in os.listdir(VIDEOS_PATH):
         if not path.endswith(".mp4"):
             continue
 
         video_path = os.path.join(VIDEOS_PATH, path)
-        name = video_path.strip("../Videos\\").strip(".mp4")
+        name = path.strip(".mp4")
         output_path = os.path.join(OUTPUT_BASE_PATH, name)
 
         fps, width, height, n_frames = get_video_params(video_path)
@@ -169,17 +215,15 @@ def main():
 
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 
-        # rectangles_output_path = os.path.join(output_path, "rectangles")
-        # os.makedirs(rectangles_output_path, exist_ok=True)
-        out_rectangle = cv2.VideoWriter(os.path.join(output_path, "rectangles.mp4"), fourcc, fps, (width, height),
-                                        isColor=True)
-
+        out_left_hand = None
+        left_hand_output_path = None
         if "LH" in name:
             left_hand_output_path = os.path.join(output_path, "left_hand")
             os.makedirs(left_hand_output_path, exist_ok=True)
             out_left_hand = cv2.VideoWriter(os.path.join(output_path, "left_hand.mp4"), fourcc, fps, (256, 256),
                                             isColor=True)
-
+        out_right_hand = None
+        right_hand_output_path = None
         if "RH" in name:
             right_hand_output_path = os.path.join(output_path, "right_hand")
             os.makedirs(right_hand_output_path, exist_ok=True)
@@ -194,51 +238,22 @@ def main():
                 with vision.HandLandmarker.create_from_options(hand_options) as hands:
 
                     for frame in get_frames(video_path):
-                        frame_with_rects = frame
+                        if out_left_hand and left_hand_output_path:
+                            detect_and_write_hand(
+                                hands, pose, frame, index, "left", out_left_hand, left_hand_output_path
+                            )
 
-                        if "LH" in name:
-                            lh_rect, lh_visibility = get_hand_rectangle(pose, index, frame, "left")
-                            if lh_visibility >= VISIBILITY_THRESHOLD:
-                                frame_with_rects = draw_rectangle(frame_with_rects, lh_rect, color=(0, 255, 0),
-                                                                  thickness=15)
-                                lh_cropped = draw_cropped(frame, lh_rect)
-
-                                if lh_cropped is not None and len(lh_cropped) != 0:
-                                    lh_cropped_resized = resize(lh_cropped, 256, 256)
-                                    res = hands.detect_for_video(
-                                        mp.Image(image_format=mp.ImageFormat.SRGB, data=lh_cropped_resized),
-                                        index
-                                    )
-                                    if res.hand_landmarks:
-                                        out_left_hand.write(lh_cropped_resized)
-                                        cv2.imwrite(os.path.join(left_hand_output_path, str(index) + ".png"), lh_cropped_resized)
-
-                        if "RH" in name:
-                            rh_rect, rh_visibility = get_hand_rectangle(pose, index, frame, "right")
-                            if rh_visibility >= VISIBILITY_THRESHOLD:
-                                frame_with_rects = draw_rectangle(frame_with_rects, rh_rect, color=(255, 255, 255),
-                                                                  thickness=15)
-                                rh_cropped = draw_cropped(frame, rh_rect)
-
-                                if rh_cropped is not None and len(rh_cropped) != 0:
-                                    rh_cropped_resized = resize(rh_cropped, 256, 256)
-                                    res = hands.detect_for_video(
-                                        mp.Image(image_format=mp.ImageFormat.SRGB, data=rh_cropped_resized)
-                                        , index)
-                                    if res.hand_landmarks:
-                                        out_right_hand.write(rh_cropped_resized)
-                                        cv2.imwrite(os.path.join(right_hand_output_path, str(index) + ".png"), rh_cropped_resized)
-
-                        out_rectangle.write(frame_with_rects)
-                        # cv2.imwrite(os.path.join(rectangles_output_path, str(index) + ".png"), frame_with_rects)
+                        if out_right_hand and right_hand_output_path:
+                            detect_and_write_hand(
+                                hands, pose, frame, index, "right", out_right_hand, right_hand_output_path
+                            )
 
                         pbar.update(1)
                         index += 1
 
-        out_rectangle.release()
-        if "LH" in name:
+        if out_left_hand:
             out_left_hand.release()
-        if "RH" in name:
+        if out_right_hand:
             out_right_hand.release()
 
     print("Done.")

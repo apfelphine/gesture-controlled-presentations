@@ -182,7 +182,7 @@ local
 data
 
 # Trained models
-*model
+*model*
 
 # Mediapipe tasks
 tasks

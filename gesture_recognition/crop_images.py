@@ -87,10 +87,10 @@ def bounding_square(points: List[Tuple[float, float]], max_width, max_height, bu
     min_y -= y_buffer
     max_y += y_buffer
 
-    min_x = max(0, min_x)
-    min_y = max(0, min_y)
-    max_x = min(max_width-1, max_x)
-    max_y = min(max_height-1, max_y)
+    min_x = min(max_width-1, max(0, min_x))
+    min_y = min(max_height-1, max(0, min_y))
+    max_x = max(0, min(max_width-1, max_x))
+    max_y = max(0, min(max_height-1, max_y))
 
     # Make it square
     width = max_x - min_x
@@ -103,9 +103,24 @@ def bounding_square(points: List[Tuple[float, float]], max_width, max_height, bu
 
     half_side = side / 2
     square_min_x = center_x - half_side
+    if square_min_x < 0:
+        center_x += abs(square_min_x)
+        square_min_x = 0
+
     square_max_x = center_x + half_side
+    if square_max_x > max_width-1:
+        square_min_x -= abs(max_width - square_max_x -1)
+        square_max_x = max_width - 1
+
     square_min_y = center_y - half_side
+    if square_min_y < 0:
+        center_y += abs(square_min_y)
+        square_min_y = 0
+
     square_max_y = center_y + half_side
+    if square_max_y > max_height-1:
+        square_max_y -= abs(max_height - square_max_y -1)
+        square_max_y = max_height - 1
 
     return (int(square_min_x), int(square_min_y)), (int(square_max_x), int(square_max_y))
 
@@ -167,7 +182,11 @@ def detect_and_write_hand(
         cropped_palm = draw_cropped(frame, rect)
 
         if cropped_palm is not None and len(cropped_palm) != 0:
-            cropped_palm_resized = resize(cropped_palm, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE)
+            try:
+                cropped_palm_resized = resize(cropped_palm, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE)
+            except Exception:
+                print("Failed to crop rect ", rect)
+                return
             res = hand_recogniser.detect_for_video(
                 mp.Image(image_format=mp.ImageFormat.SRGB, data=cropped_palm_resized),
                 index
@@ -195,12 +214,14 @@ def detect_and_write_hand(
                     cv2.imshow("AAAA", frame_with_points)
                     if cv2.waitKey(1) & 0xFF == 27:
                         exit(0)
-                    pass
 
 
 def main():
     for path in os.listdir(VIDEOS_PATH):
         if not path.endswith(".mp4"):
+            continue
+
+        if "v2" not in path:
             continue
 
         video_path = os.path.join(VIDEOS_PATH, path)

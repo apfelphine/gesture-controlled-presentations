@@ -17,7 +17,10 @@ options = GestureRecognizerOptions(
     num_hands=2
 )
 timestamp = 0
+
 slide_counter = 0
+color = (0, 0, 255)
+last_action = None
 
 action_controller = action_controller.ActionController()
 
@@ -40,22 +43,27 @@ with GestureRecognizer.create_from_options(options) as recognizer:
         action_result = action_controller(result)
         action = action_result["action"]
 
+        if action != last_action:
+            color = (0, 0, 255)
+
+        last_action = action
+
         if action is not None:
-            text = f"{action} - {action_result['count']}/{action_result['min_count']}"
-            color = (0,0,255)
+            text = f"{action}"
+
+            if action_result.get("swipe_distance", None):
+                text += (f" - swipe distance: {str(abs(round(action_result['swipe_distance'], 2)))}/"
+                         f"{action_result['min_swipe_distance']}")
+            else:
+                text += f"- count: {action_result['count']}/{action_result['min_count']}"
 
             if action_result["triggered"]:
-                text += " (TRIGGERING)"
                 color = (0, 255, 0)
 
                 if action == "prev":
                     slide_counter -= 1
                 elif action == "next":
                     slide_counter += 1
-
-            if action_result['count'] > action_result['min_count']:
-                text += " (TRIGGERED)"
-                color = (0, 255, 0)
 
             frame = cv2.putText(frame, text, (30, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 

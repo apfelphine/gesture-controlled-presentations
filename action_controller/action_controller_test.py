@@ -1,3 +1,5 @@
+import time
+
 import mediapipe as mp
 import cv2
 
@@ -16,14 +18,13 @@ options = GestureRecognizerOptions(
     running_mode=VisionRunningMode.VIDEO,
     num_hands=2
 )
-timestamp = 0
+start = time.perf_counter()
 
 slide_counter = 0
 color = (0, 0, 255)
 last_action = None
 
 action_controller = action_controller.ActionController()
-
 
 with GestureRecognizer.create_from_options(options) as recognizer:
     while video.isOpened():
@@ -34,14 +35,13 @@ with GestureRecognizer.create_from_options(options) as recognizer:
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
-        result = recognizer.recognize_for_video(mp_image, timestamp)
-        timestamp += 1
+        result = recognizer.recognize_for_video(mp_image, int((time.perf_counter() - start) * 1000.0))
 
         height, width, _ = frame.shape
         frame = cv2.flip(frame, 1)  # Flip for selfie view
 
         action_result = action_controller(result)
-        action = action_result["action"]
+        action = action_result.action
 
         if action != last_action:
             color = (0, 0, 255)
@@ -49,15 +49,15 @@ with GestureRecognizer.create_from_options(options) as recognizer:
         last_action = action
 
         if action is not None:
-            text = f"{action}"
+            text = f"{action} ({action_result.gesture})"
 
-            if action_result.get("swipe_distance", None):
-                text += (f" - swipe distance: {str(abs(round(action_result['swipe_distance'], 2)))}/"
-                         f"{action_result['min_swipe_distance']}")
+            if action_result.swipe_distance is not None:
+                text += (f" - swipe distance: {str(abs(round(action_result.swipe_distance, 2)))}/"
+                         f"{action_result.min_swipe_distance}")
             else:
-                text += f"- count: {action_result['count']}/{action_result['min_count']}"
+                text += f"- count: {action_result.count}/{action_result.min_count}"
 
-            if action_result["triggered"]:
+            if action_result.triggered:
                 color = (0, 255, 0)
 
                 if action == "prev":

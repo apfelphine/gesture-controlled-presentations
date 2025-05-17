@@ -1,15 +1,16 @@
+from collections import deque
+from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Deque
 
 import mediapipe as mp
 from mediapipe.tasks.python.components.containers import NormalizedLandmark
-
-GestureRecognizerResult = mp.tasks.vision.GestureRecognizerResult
 
 
 class Action(str, Enum):
     NEXT = "next"
     PREV = "prev"
+    POINT = "point"
 
 
 class _Handedness(str, Enum):
@@ -17,36 +18,59 @@ class _Handedness(str, Enum):
     RIGHT = "Right"
 
 
+@dataclass
+class GestureRecognitionResult:
+    gesture: Optional[str] = None
+    hand_landmarks: Optional[List[NormalizedLandmark]] = None
+    action: Optional[Action] = None
+
+
+@dataclass
+class HandLogGesture:
+    last_gestures: Deque[GestureRecognitionResult]
+    triggered_action: Optional[Action] = None
+
+
+@dataclass
+class ActionClassificationResult:
+    action: Optional[Action] = None
+    gesture: Optional[str] = None
+    triggered: bool = False
+    min_count: Optional[int] = None
+    count: Optional[int] = None
+    min_swipe_distance: Optional[float] = None
+    swipe_distance: Optional[float] = None
+
+
 class ActionController:
     def __init__(self):
-        self._enabled_gestures = ["pinky-point", "thumb-point", "thumbs-up", "2finger", "swipe"]
+        self._enabled_gestures = ["pinky-point", "thumb-point", "thumbs-up", "2finger", "swipe", "point"]
+        self._num_last_hands = 30
+        self._min_trigger_frame_count = 7
+        self._min_exit_frame_count = 10
+        self._min_swipe_distance = 0.2
 
-        self._gesture_log: Dict[_Handedness, Dict] = {
-            _Handedness.LEFT: {
-                "last_gesture": None,
-                "count": None,
-                "last_hand_landmarks": None,
-                "swipe_distance": 0,
-                "triggered": False
-            },
-            _Handedness.RIGHT: {
-                "last_gesture": None,
-                "count": None,
-                "last_hand_landmarks": None,
-                "swipe_distance": 0,
-                "triggered": False
-            }
+        self._last_gesture_recognition_results: Dict[_Handedness, HandLogGesture] = {
+            _Handedness.LEFT: HandLogGesture(
+                last_gestures=deque(maxlen=self._num_last_hands),
+                triggered_action=None,
+            ),
+            _Handedness.RIGHT: HandLogGesture(
+                last_gestures=deque(maxlen=self._num_last_hands),
+                triggered_action=None,
+            ),
         }
 
-        self._enter_threshold = 4  # -> 4 frames
-        self._min_swipe_distance = 0.15
+    def __call__(self, gesture_recognizer_result: mp.tasks.vision.GestureRecognizerResult) -> ActionClassificationResult:
+        gesture_recognition_result: Dict[_Handedness, GestureRecognitionResult] = {
+            _Handedness.LEFT: GestureRecognitionResult(),
+            _Handedness.RIGHT: GestureRecognitionResult()
+        }
 
-    def __call__(self, gesture_recognizer_result: GestureRecognizerResult) -> Dict:
-        hands = [_Handedness.LEFT, _Handedness.RIGHT]
         if (
-                gesture_recognizer_result.gestures
-                and gesture_recognizer_result.hand_landmarks
-                and gesture_recognizer_result.handedness
+            gesture_recognizer_result.gestures
+            and gesture_recognizer_result.hand_landmarks
+            and gesture_recognizer_result.handedness
         ):
             for gesture_group, hand_landmarks, handedness in zip(
                     gesture_recognizer_result.gestures,
@@ -54,62 +78,56 @@ class ActionController:
                     gesture_recognizer_result.handedness
             ):
                 hand_label = handedness[0].category_name
-                if hand_label in hands:
-                    hands.remove(hand_label)
+                gesture_recognition_result[hand_label].hand_landmarks = hand_landmarks
 
                 if gesture_group:
                     gesture_name = gesture_group[0].category_name
-
                     if gesture_name and gesture_name in self._enabled_gestures:
+                        gesture_recognition_result[hand_label].gesture = gesture_name
+                        gesture_recognition_result[hand_label].action = self._get_action_from_gesture(
+                            gesture_name, hand_landmarks, hand_label
+                        )
 
-                        if self._gesture_log[hand_label]["last_gesture"] == gesture_name:
-                            self._gesture_log[hand_label]["count"] += 1
-                        else:
-                            self._gesture_log[hand_label]["count"] = 1
-                            self._gesture_log[hand_label]["swipe_distance"] = 0
-                            self._gesture_log[hand_label]["triggered"] = False
+        for key, value in gesture_recognition_result.items():
+            self._last_gesture_recognition_results[key].last_gestures.append(value)
 
-                        action = self._get_action_from_gesture(gesture_name, hand_landmarks, hand_label)
-                        self._gesture_log[hand_label]["last_hand_landmarks"] = hand_landmarks
-                        self._gesture_log[hand_label]["last_gesture"] = gesture_name
+        result = ActionClassificationResult()
+        hand = None
+        frame = self._num_last_hands
 
-                        threshold_met = self._gesture_log[hand_label]["count"] == self._enter_threshold
-                        distance_achieved = self._gesture_log[hand_label]["swipe_distance"]
-                        min_distance_achieved = abs(distance_achieved) > self._min_swipe_distance
+        for key, value in self._last_gesture_recognition_results.items():
+            res, f = self._get_triggered_action_from_last_results(list(value.last_gestures))
+            res.triggered = res.triggered and res.action != value.triggered_action
 
-                        triggered = False
-                        if (threshold_met and not gesture_name == "swipe") or min_distance_achieved:
-                            triggered = not self._gesture_log[hand_label]["triggered"]
-                            self._gesture_log[hand_label]["triggered"] = True
+            if res.triggered:
+                value.triggered_action = res.action
+                if res.action is None or res.action != Action.POINT:
+                    value.last_gestures = deque(maxlen=self._num_last_hands)
 
-                        return {
-                            "action": action,
-                            "triggered": triggered,
-                            "count": self._gesture_log[hand_label]["count"],
-                            "min_count": self._enter_threshold,
-                            "swipe_distance": distance_achieved,
-                            "min_swipe_distance": self._min_swipe_distance
-                        }
+            if f < frame or (f <= frame and result.action is None):
+                result = res
+                frame = f
+                hand = key
 
-                self._gesture_log[hand_label]["last_hand_landmarks"] = hand_landmarks
-                self._gesture_log[hand_label]["count"] = 0
-                self._gesture_log[hand_label]["last_gesture"] = None
-                self._gesture_log[hand_label]["swipe_distance"] = 0
-                self._gesture_log[hand_label]["triggered"] = False
+        for key, value in self._last_gesture_recognition_results.items():
+            if key != hand:
+                value.triggered_action = None
+                value.last_gestures = deque(maxlen=self._num_last_hands)
 
-        for hand in hands:
-            self._gesture_log[hand]["count"] = 0
-            self._gesture_log[hand]["last_gesture"] = None
-            self._gesture_log[hand]["last_hand_landmarks"] = None
-            self._gesture_log[hand]["swipe_distance"] = 0
-            self._gesture_log[hand]["triggered"] = False
+        return result
 
-        return {
-            "action": None
-        }
+    @staticmethod
+    def _get_action_from_gesture(
+        gesture_name: str,
+        hand_landmarks: List[NormalizedLandmark],
+        hand: _Handedness
+    ) -> Optional[Action]:
+        if hand_landmarks is None or gesture_name is None:
+            return None
 
-    def _get_action_from_gesture(self, gesture_name: str, hand_landmarks: List[NormalizedLandmark],
-                                 hand: _Handedness) -> Optional[Action]:
+        if gesture_name == "point":
+            return Action.POINT
+
         if gesture_name in ["thumbs-up", "pinky-point"]:
             if hand == _Handedness.RIGHT:
                 return Action.NEXT
@@ -134,7 +152,7 @@ class ActionController:
                 else:
                     no_pointing_finger_x.append(hand_landmarks[idx].x)
 
-            pointing_smaller_than_no_pointing = True  # next
+            pointing_smaller_than_no_pointing = True
             for x in pointing_finger_x:
                 if not all(x < x2 for x2 in no_pointing_finger_x):
                     pointing_smaller_than_no_pointing = False
@@ -143,7 +161,7 @@ class ActionController:
             if pointing_smaller_than_no_pointing:
                 return Action.NEXT
 
-            pointing_bigger_than_no_pointing = True  # prev
+            pointing_bigger_than_no_pointing = True
             for x in pointing_finger_x:
                 if not all(x > x2 for x2 in no_pointing_finger_x):
                     pointing_bigger_than_no_pointing = False
@@ -152,21 +170,84 @@ class ActionController:
             if pointing_bigger_than_no_pointing:
                 return Action.PREV
 
-        if gesture_name == "swipe":
-            middle_finger_point_idx = 12
-            if not self._gesture_log[hand]["last_hand_landmarks"]:
-                return None
-            last_x = self._gesture_log[hand]["last_hand_landmarks"][middle_finger_point_idx].x
-            current_x = hand_landmarks[middle_finger_point_idx].x
-
-            diff = round(current_x - last_x, 2)
-            current_distance = self._gesture_log[hand].get("swipe_distance", 0)
-
-            if diff*current_distance >= 0:  # the diffs are either both positive or both negative (both ok)
-                current_distance += diff
-                self._gesture_log[hand]["swipe_distance"] = current_distance
-                return Action.PREV if current_distance > 0 else Action.NEXT
-            else:
-                self._gesture_log[hand]["swipe_distance"] = diff
-
         return None
+
+    def _get_triggered_action_from_last_results(
+        self, last_results: List[GestureRecognitionResult]
+    ) -> (ActionClassificationResult, int):
+        gesture_count: Dict[(str, Action), (int, int, int)] = {}
+
+        max_percentage_gesture_key = None
+        max_percentage = -1
+
+        last_hand_landmarks = None
+
+        for idx, res in enumerate(reversed(last_results)):
+            key = (res.gesture, res.action)
+            current, _, frame = gesture_count.get(key, (0, 0, self._num_last_hands))
+
+            if idx < frame:
+                frame = idx
+
+            if res.gesture == "swipe":
+                middle_finger_point_idx = 12
+                if last_hand_landmarks:
+                    # todo: distance should look at z coord as well
+                    last_x = last_hand_landmarks[middle_finger_point_idx].x
+                    current_x = res.hand_landmarks[middle_finger_point_idx].x
+
+                    diff = round(current_x - last_x, 2)
+                    if diff * current >= 0:  # the diffs are either both positive or both negative (both ok)
+                        current += diff
+                    else:
+                        current = diff
+
+                last_hand_landmarks = res.hand_landmarks
+
+                min_ = self._min_swipe_distance
+                percentage = abs(current) / min_
+            else:
+                current = current + 1
+                min_ = self._min_trigger_frame_count if res.action is not None else self._min_exit_frame_count
+                percentage = current / min_
+
+            gesture_count[key] = current, min_, frame
+
+            if percentage >= 1:
+                if res.gesture == "swipe":
+                    action = Action.PREV if current < 0 else Action.NEXT
+                    return ActionClassificationResult(
+                        action=action,
+                        swipe_distance=current,
+                        min_swipe_distance=min_,
+                        triggered=True
+                    ), frame
+                else:
+                    return ActionClassificationResult(
+                        action=res.action,
+                        count=current,
+                        min_count=min_,
+                        triggered=True
+                    ), frame
+
+            if percentage > max_percentage:
+                max_percentage = percentage
+                max_percentage_gesture_key = key
+
+        max_gesture_type = max_percentage_gesture_key[0]
+
+        if max_gesture_type == "swipe":
+            action = Action.PREV if gesture_count[max_percentage_gesture_key][0] < 0 else Action.NEXT
+            return ActionClassificationResult(
+                gesture=max_percentage_gesture_key[0],
+                action=action,
+                swipe_distance=abs(gesture_count[max_percentage_gesture_key][0]),
+                min_swipe_distance=gesture_count[max_percentage_gesture_key][1]
+            ), gesture_count[max_percentage_gesture_key][2]
+        else:
+            return ActionClassificationResult(
+                gesture=max_percentage_gesture_key[0],
+                action=max_percentage_gesture_key[1],
+                count=gesture_count[max_percentage_gesture_key][0],
+                min_count=gesture_count[max_percentage_gesture_key][1]
+            ), gesture_count[max_percentage_gesture_key][2]

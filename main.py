@@ -19,7 +19,7 @@ gesture_recognition_options = vision.GestureRecognizerOptions(
     num_hands=2
 )
 pose_landmark_options = vision.PoseLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path='../tasks/pose_landmarker_heavy.task'),
+    base_options=BaseOptions(model_asset_path='tasks/pose_landmarker_heavy.task'),
     running_mode=vision.RunningMode.VIDEO,
     output_segmentation_masks=False,
     num_poses=1,

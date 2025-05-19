@@ -1,4 +1,5 @@
 import time
+import pyautogui
 
 import mediapipe as mp
 import cv2
@@ -14,7 +15,9 @@ VisionRunningMode = mp.tasks.vision.RunningMode
 video = cv2.VideoCapture(0)
 
 options = GestureRecognizerOptions(
-    base_options=BaseOptions(model_asset_path='../gesture_recognition/gesture_recognizer_model/gesture_recognizer.task'),
+    base_options=BaseOptions(
+        model_asset_path='../gesture_recognition/gesture_recognizer_model/gesture_recognizer.task'
+    ),
     running_mode=VisionRunningMode.VIDEO,
     num_hands=2
 )
@@ -62,8 +65,10 @@ with GestureRecognizer.create_from_options(options) as recognizer:
 
                 if action == "prev":
                     slide_counter -= 1
+                    pyautogui.press(pyautogui.LEFT)
                 elif action == "next":
                     slide_counter += 1
+                    pyautogui.press(pyautogui.RIGHT)
 
             frame = cv2.putText(frame, text, (30, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 

@@ -48,7 +48,7 @@ class ActionController:
         self._num_last_hands = 30
         self._min_trigger_frame_count = 7
         self._min_exit_frame_count = 10
-        self._min_swipe_distance = 0.2
+        self._min_swipe_distance = 2
 
         self._last_gesture_recognition_results: Dict[_Handedness, HandLogGesture] = {
             _Handedness.LEFT: HandLogGesture(
@@ -61,7 +61,8 @@ class ActionController:
             ),
         }
 
-    def __call__(self, gesture_recognizer_result: mp.tasks.vision.GestureRecognizerResult) -> ActionClassificationResult:
+    def __call__(self, gesture_recognizer_result: mp.tasks.vision.GestureRecognizerResult) \
+            -> ActionClassificationResult:
         gesture_recognition_result: Dict[_Handedness, GestureRecognitionResult] = {
             _Handedness.LEFT: GestureRecognitionResult(),
             _Handedness.RIGHT: GestureRecognitionResult()
@@ -192,15 +193,17 @@ class ActionController:
             if res.gesture == "swipe":
                 middle_finger_point_idx = 12
                 if last_hand_landmarks:
-                    # todo: distance should look at z coord as well
-                    last_x = last_hand_landmarks[middle_finger_point_idx].x
-                    current_x = res.hand_landmarks[middle_finger_point_idx].x
+                    last_point = last_hand_landmarks[middle_finger_point_idx]
+                    current_point = res.hand_landmarks[middle_finger_point_idx]
 
-                    diff = round(current_x - last_x, 2)
-                    if diff * current >= 0:  # the diffs are either both positive or both negative (both ok)
-                        current += diff
+                    delta_x = current_point.x - last_point.x
+                    avg_z = (abs(current_point.z) + abs(last_point.z)) / 2
+                    depth_scale = max(avg_z, 0.01)
+                    scaled_delta_x = delta_x / depth_scale
+                    if scaled_delta_x * current >= 0:
+                        current += scaled_delta_x
                     else:
-                        current = diff
+                        current = scaled_delta_x
 
                 last_hand_landmarks = res.hand_landmarks
 

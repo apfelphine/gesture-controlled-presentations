@@ -5,6 +5,7 @@ import mediapipe as mp
 import cv2
 
 from action_controller.action_controller import ActionController
+from overlay.presentation_overlay import OverlayContextManager
 
 BaseOptions = mp.tasks.BaseOptions
 vision = mp.tasks.vision
@@ -30,46 +31,49 @@ start = time.perf_counter()
 action_controller = ActionController()
 
 # todo: richtiges window fokussieren
+with OverlayContextManager() as overlay:
+    with vision.GestureRecognizer.create_from_options(gesture_recognition_options) as gesture_recognizer:
+        with vision.PoseLandmarker.create_from_options(pose_landmark_options) as pose_landmark_detection:
+            while video.isOpened():
+                ret, frame = video.read()
+                if not ret:
+                    break
 
-with vision.GestureRecognizer.create_from_options(gesture_recognition_options) as gesture_recognizer:
-    with vision.PoseLandmarker.create_from_options(pose_landmark_options) as pose_landmark_detection:
-        while video.isOpened():
-            ret, frame = video.read()
-            if not ret:
-                break
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
 
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+                timestamp = int((time.perf_counter() - start) * 1000.0)
 
-            timestamp = int((time.perf_counter() - start) * 1000.0)
+                gesture_detection_result = gesture_recognizer.recognize_for_video(mp_image, timestamp)
+                # gesture_detection_result.hand_landmarks
+                # gesture_detection_result.handedness
+                # gesture_detection_result.gestures
 
-            gesture_detection_result = gesture_recognizer.recognize_for_video(mp_image, timestamp)
-            # gesture_detection_result.hand_landmarks
-            # gesture_detection_result.handedness
-            # gesture_detection_result.gestures
+                action_result = action_controller(gesture_detection_result)
+                # action_result.gesture
+                # action_result.action (e.g. "point", "prev", "next")
+                # action_result.triggered
 
-            action_result = action_controller(gesture_detection_result)
-            # action_result.gesture
-            # action_result.action (e.g. "point", "prev", "next")
-            # action_result.triggered
+                pose_result = pose_landmark_detection.detect_for_video(mp_image, timestamp)
+                # pose_result.pose_landmarks
 
-            pose_result = pose_landmark_detection.detect_for_video(mp_image, timestamp)
-            # pose_result.pose_landmarks
+                # todo: pointing target detection aufrufen
+                # todo: pointing target in overlay darstellen
 
-            # todo: pointing target detection aufrufen
-            # todo: overlay
+                overlay.update_action_result(action_result)
+                overlay.update()
 
-            # Convert Action to Keypress
-            if action_result.action is not None:
-                if action_result.triggered:
-                    if action_result.action == "prev":
-                        pyautogui.press(pyautogui.LEFT)
-                    elif action_result.action == "next":
-                        pyautogui.press(pyautogui.RIGHT)
+                # Convert Action to Keypress
+                if action_result.action is not None:
+                    if action_result.triggered:
+                        if action_result.action == "prev":
+                            pyautogui.press(pyautogui.LEFT)
+                        elif action_result.action == "next":
+                            pyautogui.press(pyautogui.RIGHT)
 
-            if cv2.waitKey(1) & 0xFF == 27:
-                break
+                if cv2.waitKey(1) & 0xFF == 27:
+                    break
 
 video.release()
 cv2.destroyAllWindows()

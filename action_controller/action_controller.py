@@ -220,6 +220,7 @@ class ActionController:
                 if res.gesture == "swipe":
                     action = Action.PREV if current < 0 else Action.NEXT
                     return ActionClassificationResult(
+                        gesture=res.gesture,
                         action=action,
                         swipe_distance=current,
                         min_swipe_distance=min_,
@@ -227,6 +228,7 @@ class ActionController:
                     ), frame
                 else:
                     return ActionClassificationResult(
+                        gesture=res.gesture,
                         action=res.action,
                         count=current,
                         min_count=min_,

@@ -46,8 +46,8 @@ class ActionController:
     def __init__(self):
         self._enabled_gestures = ["pinky-point", "thumb-point", "thumbs-up", "2finger", "swipe", "point"]
         self._num_last_hands = 30
-        self._min_trigger_frame_count = 7
-        self._min_exit_frame_count = 10
+        self._min_trigger_frame_count = 4
+        self._min_exit_frame_count = 6
         self._min_swipe_distance = 2
 
         self._last_gesture_recognition_results: Dict[_Handedness, HandLogGesture] = {

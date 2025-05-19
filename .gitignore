@@ -181,8 +181,5 @@ local
 # Data (training, processed, unprocessed)
 data
 
-# Trained models
-*model*
-
 # Mediapipe tasks
 tasks

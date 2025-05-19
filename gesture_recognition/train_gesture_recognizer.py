@@ -4,7 +4,6 @@ import tensorflow as tf
 
 from mediapipe_model_maker import gesture_recognizer
 
-#dataset_path = "/home/felix/Downloads/rps_data_sample"
 dataset_path = "../data/training"
 
 print(dataset_path)

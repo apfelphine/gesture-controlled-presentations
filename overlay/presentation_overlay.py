@@ -39,7 +39,7 @@ class OverlayWindow(QtWidgets.QWidget):
             return
 
         if self.action_color != (0, 255, 0):
-            text = f"{action_result.action} ({action_result.gesture})"
+            text = f"{action_result.action.value.upper()} ({action_result.gesture} / {action_result.hand.value})"
 
             if action_result.swipe_distance is not None:
                 text += (f" - swipe distance: {str(abs(round(action_result.swipe_distance, 2)))}/"

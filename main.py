@@ -20,7 +20,7 @@ gesture_recognition_options = vision.GestureRecognizerOptions(
     num_hands=2
 )
 pose_landmark_options = vision.PoseLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path='tasks/pose_landmarker_heavy.task'),
+    base_options=BaseOptions(model_asset_path='tasks/pose_landmarker_full.task'),
     running_mode=vision.RunningMode.VIDEO,
     output_segmentation_masks=False,
     num_poses=1,
@@ -50,13 +50,13 @@ with OverlayContextManager() as overlay:
                 # gesture_detection_result.handedness
                 # gesture_detection_result.gestures
 
-                action_result = action_controller(gesture_detection_result)
+                pose_result = pose_landmark_detection.detect_for_video(mp_image, timestamp)
+                # pose_result.pose_landmarks
+
+                action_result = action_controller(gesture_detection_result, pose_result)
                 # action_result.gesture
                 # action_result.action (e.g. "point", "prev", "next")
                 # action_result.triggered
-
-                pose_result = pose_landmark_detection.detect_for_video(mp_image, timestamp)
-                # pose_result.pose_landmarks
 
                 # todo: pointing target detection aufrufen
                 # todo: pointing target in overlay darstellen

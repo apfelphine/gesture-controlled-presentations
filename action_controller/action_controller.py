@@ -1,3 +1,4 @@
+import math
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum
@@ -14,8 +15,8 @@ class Action(str, Enum):
 
 
 class _Handedness(str, Enum):
-    LEFT = "Left"
-    RIGHT = "Right"
+    LEFT = "left"
+    RIGHT = "right"
 
 
 @dataclass
@@ -35,6 +36,7 @@ class HandLogGesture:
 class ActionClassificationResult:
     action: Optional[Action] = None
     gesture: Optional[str] = None
+    hand: Optional[_Handedness] = None
     triggered: bool = False
     min_count: Optional[int] = None
     count: Optional[int] = None
@@ -50,6 +52,9 @@ class ActionController:
         self._min_exit_frame_count = 6
         self._min_swipe_distance = 2
 
+        self._min_pose_hand_distance = 0.5
+        self._min_visibility_pose_detection = 0.5
+
         self._last_gesture_recognition_results: Dict[_Handedness, HandLogGesture] = {
             _Handedness.LEFT: HandLogGesture(
                 last_gestures=deque(maxlen=self._num_last_hands),
@@ -61,8 +66,11 @@ class ActionController:
             ),
         }
 
-    def __call__(self, gesture_recognizer_result: mp.tasks.vision.GestureRecognizerResult) \
-            -> ActionClassificationResult:
+    def __call__(
+        self,
+        gesture_recognizer_result: mp.tasks.vision.GestureRecognizerResult,
+        pose_landmarks_result: mp.tasks.vision.PoseLandmarkerResult,
+    ) -> ActionClassificationResult:
         gesture_recognition_result: Dict[_Handedness, GestureRecognitionResult] = {
             _Handedness.LEFT: GestureRecognitionResult(),
             _Handedness.RIGHT: GestureRecognitionResult()
@@ -78,7 +86,46 @@ class ActionController:
                     gesture_recognizer_result.hand_landmarks,
                     gesture_recognizer_result.handedness
             ):
-                hand_label = handedness[0].category_name
+                hand_label = handedness[0].category_name.lower()
+
+                # Correct handedness using pose landmarks since somtimes the model screws up
+                if pose_landmarks_result.pose_landmarks and len(pose_landmarks_result.pose_landmarks[0]):
+                    pose_landmarks = pose_landmarks_result.pose_landmarks[0]
+                    left_index = 15
+                    right_index = 16
+
+                    left_index_landmark = pose_landmarks[left_index]
+                    right_index_landmark = pose_landmarks[right_index]
+
+                    if left_index_landmark and left_index_landmark.visibility <= self._min_visibility_pose_detection:
+                        left_index_landmark = None
+
+                    if right_index_landmark and right_index_landmark.visibility <= self._min_visibility_pose_detection:
+                        right_index_landmark = None
+
+                    if right_index_landmark and left_index_landmark:
+                        x_coords = [l.x for l in hand_landmarks]
+                        avg_x = sum(x_coords) / len(x_coords)
+                        y_coords = [l.y for l in hand_landmarks]
+                        avg_y = sum(y_coords) / len(y_coords)
+
+                        distance_left = round(math.sqrt(
+                            math.pow(left_index_landmark.x - avg_x, 2) +
+                            math.pow(left_index_landmark.y - avg_y, 2)
+                        ), 2)
+                        distance_right = round(math.sqrt(
+                            math.pow(right_index_landmark.x - avg_x, 2) +
+                            math.pow(right_index_landmark.y - avg_y, 2)
+                        ), 2)
+                        if distance_left < distance_right and distance_left < self._min_pose_hand_distance and right_index_landmark.visibility < left_index_landmark.visibility:
+                            hand_label = _Handedness.LEFT
+                        elif distance_left > distance_right and distance_right < self._min_pose_hand_distance and right_index_landmark.visibility > left_index_landmark.visibility:
+                            hand_label = _Handedness.RIGHT
+                    elif left_index_landmark:
+                        hand_label = _Handedness.LEFT
+                    elif right_index_landmark:
+                        hand_label = _Handedness.RIGHT
+
                 gesture_recognition_result[hand_label].hand_landmarks = hand_landmarks
 
                 if gesture_group:
@@ -97,7 +144,7 @@ class ActionController:
         frame = self._num_last_hands
 
         for key, value in self._last_gesture_recognition_results.items():
-            res, f = self._get_triggered_action_from_last_results(list(value.last_gestures))
+            res, f = self._get_triggered_action_from_last_results(key, list(value.last_gestures))
             res.triggered = res.triggered and res.action != value.triggered_action
 
             if res.triggered:
@@ -174,7 +221,7 @@ class ActionController:
         return None
 
     def _get_triggered_action_from_last_results(
-        self, last_results: List[GestureRecognitionResult]
+        self, hand: _Handedness, last_results: List[GestureRecognitionResult]
     ) -> (ActionClassificationResult, int):
         gesture_count: Dict[(str, Action), (int, int, int)] = {}
 
@@ -200,6 +247,9 @@ class ActionController:
                     avg_z = (abs(current_point.z) + abs(last_point.z)) / 2
                     depth_scale = max(avg_z, 0.01)
                     scaled_delta_x = delta_x / depth_scale
+
+                    scaled_delta_x = round(scaled_delta_x, 2)
+
                     if scaled_delta_x * current >= 0:
                         current += scaled_delta_x
                     else:
@@ -224,7 +274,8 @@ class ActionController:
                         action=action,
                         swipe_distance=current,
                         min_swipe_distance=min_,
-                        triggered=True
+                        triggered=True,
+                        hand=hand
                     ), frame
                 else:
                     return ActionClassificationResult(
@@ -232,7 +283,8 @@ class ActionController:
                         action=res.action,
                         count=current,
                         min_count=min_,
-                        triggered=True
+                        triggered=True,
+                        hand=hand
                     ), frame
 
             if percentage > max_percentage:
@@ -247,12 +299,14 @@ class ActionController:
                 gesture=max_percentage_gesture_key[0],
                 action=action,
                 swipe_distance=abs(gesture_count[max_percentage_gesture_key][0]),
-                min_swipe_distance=gesture_count[max_percentage_gesture_key][1]
+                min_swipe_distance=gesture_count[max_percentage_gesture_key][1],
+                hand=hand
             ), gesture_count[max_percentage_gesture_key][2]
         else:
             return ActionClassificationResult(
                 gesture=max_percentage_gesture_key[0],
                 action=max_percentage_gesture_key[1],
                 count=gesture_count[max_percentage_gesture_key][0],
-                min_count=gesture_count[max_percentage_gesture_key][1]
+                min_count=gesture_count[max_percentage_gesture_key][1],
+                hand=hand
             ), gesture_count[max_percentage_gesture_key][2]

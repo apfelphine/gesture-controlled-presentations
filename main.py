@@ -5,6 +5,7 @@ import mediapipe as mp
 import cv2
 
 from action_controller.action_controller import ActionController
+from action_controller.pointer_controller import PointerController
 from overlay.presentation_overlay import OverlayContextManager
 
 BaseOptions = mp.tasks.BaseOptions
@@ -32,6 +33,9 @@ action_controller = ActionController()
 
 # todo: richtiges window fokussieren
 with OverlayContextManager() as overlay:
+
+    pointer = PointerController(overlay.rect.width(), overlay.rect.height()) 
+
     with vision.GestureRecognizer.create_from_options(gesture_recognition_options) as gesture_recognizer:
         with vision.PoseLandmarker.create_from_options(pose_landmark_options) as pose_landmark_detection:
             while video.isOpened():
@@ -60,7 +64,24 @@ with OverlayContextManager() as overlay:
 
                 # todo: pointing target detection aufrufen
                 # todo: pointing target in overlay darstellen
+                # --------------------------------------------------------------------
+                fingertip_px = None
+                if action_result.action == "point":
+                    if gesture_detection_result.hand_landmarks:
+                        tip = gesture_detection_result.hand_landmarks[0][mp.solutions.hands.HandLandmark.INDEX_FINGER_TIP]
+                        h, w, _ = frame.shape
+                        fingertip_px = (int(tip.x * w), int(tip.y * h))
 
+                pointer_pos, prompt = pointer.process_landmarks(fingertip_px)
+
+                # show instructions or runtime feedback in the same overlay box
+                if prompt:
+                    overlay.action_text = prompt
+
+                overlay._draw_pointer(pointer_pos, pointer.mode)
+                overlay.update()
+
+                # --------------------------------------------------------------------
                 overlay.update_action_result(action_result)
                 overlay.update()
 

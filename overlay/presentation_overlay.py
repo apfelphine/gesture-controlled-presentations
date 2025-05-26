@@ -2,6 +2,7 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 import sys
 
 from action_controller.action_controller import ActionClassificationResult
+from action_controller.pointer_controller import PointerMode
 
 
 class OverlayWindow(QtWidgets.QWidget):
@@ -85,6 +86,24 @@ class OverlayWindow(QtWidgets.QWidget):
         painter.setFont(self.action_font)
         painter.drawText(rect.adjusted(padding, padding, -padding, -padding),
                          QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, self.action_text)
+        
+    def _draw_pointer(self, pointer_pos, mode: PointerMode):
+        if pointer_pos is None:
+            return
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        if mode is PointerMode.DOT:
+            r = 12
+            painter.setBrush(QtGui.QColor(255,0,0,200))
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.drawEllipse(QtCore.QPoint(*pointer_pos), r, r)
+        else:
+            grad = QtGui.QRadialGradient(QtCore.QPointF(*pointer_pos), 120)
+            grad.setColorAt(0, QtGui.QColor(255,255,255,0))
+            grad.setColorAt(1, QtGui.QColor(0,0,0,180))
+            painter.setBrush(QtGui.QBrush(grad))
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.drawRect(self.rect())
 
 class OverlayContextManager:
     def __init__(self):

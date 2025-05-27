@@ -1,16 +1,50 @@
+import datetime
+import os
 import time
+from enum import Enum
+import cv2
 import pyautogui
+import csv
 
 import mediapipe as mp
-import cv2
 
 from action_controller.action_controller import ActionController
 from overlay.presentation_overlay import OverlayContextManager
+from utils import save_landmarks_to_csv
 
 BaseOptions = mp.tasks.BaseOptions
 vision = mp.tasks.vision
 
+
+class RecordingMode(str, Enum):
+    NONE = "none"
+    ONLY_LANDMARKS = "only_landmarks"
+    CAMERA = "camera"
+
+
+recording_mode = RecordingMode.CAMERA
 video = cv2.VideoCapture(0)
+
+folder_name = ""
+if recording_mode is not RecordingMode.NONE:
+    folder_name = f"recordings/{datetime.datetime.now().strftime('%Y%d%m_%H_%M')}"
+    os.makedirs(folder_name, exist_ok=True)
+
+camera_writer = None
+if recording_mode == RecordingMode.CAMERA:
+    frame_width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fourcc_camera = cv2.VideoWriter_fourcc(*"mp4v")
+    camera_writer = cv2.VideoWriter(f"{folder_name}/camera.mp4", fourcc_camera, video.get(cv2.CAP_PROP_FPS) / 4,
+                                    (frame_width, frame_height))
+
+csv_file = None
+csv_writer = None
+if recording_mode != RecordingMode.NONE:
+    csv_file = open(f"{folder_name}/landmarks.csv", mode="w", newline="")
+    csv_writer = csv.writer(csv_file)
+    col_names = ["timestamp", "pose", "hand_right", "gesture_right", "hand_left", "gesture_left", "action_result"]
+    csv_writer.writerow(col_names)
 
 gesture_recognition_options = vision.GestureRecognizerOptions(
     base_options=BaseOptions(
@@ -20,7 +54,7 @@ gesture_recognition_options = vision.GestureRecognizerOptions(
     num_hands=2
 )
 pose_landmark_options = vision.PoseLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path='tasks/pose_landmarker_full.task'),
+    base_options=BaseOptions(model_asset_path='tasks/pose_landmarker_lite.task'),
     running_mode=vision.RunningMode.VIDEO,
     output_segmentation_masks=False,
     num_poses=1,
@@ -30,7 +64,6 @@ start = time.perf_counter()
 
 action_controller = ActionController()
 
-# todo: richtiges window fokussieren
 with OverlayContextManager() as overlay:
     with vision.GestureRecognizer.create_from_options(gesture_recognition_options) as gesture_recognizer:
         with vision.PoseLandmarker.create_from_options(pose_landmark_options) as pose_landmark_detection:
@@ -40,40 +73,39 @@ with OverlayContextManager() as overlay:
                     break
 
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
-
                 timestamp = int((time.perf_counter() - start) * 1000.0)
 
                 gesture_detection_result = gesture_recognizer.recognize_for_video(mp_image, timestamp)
-                # gesture_detection_result.hand_landmarks
-                # gesture_detection_result.handedness
-                # gesture_detection_result.gestures
-
                 pose_result = pose_landmark_detection.detect_for_video(mp_image, timestamp)
-                # pose_result.pose_landmarks
 
                 action_result = action_controller(gesture_detection_result, pose_result)
-                # action_result.gesture
-                # action_result.action (e.g. "point", "prev", "next")
-                # action_result.triggered
-
-                # todo: pointing target detection aufrufen
-                # todo: pointing target in overlay darstellen
 
                 overlay.update_action_result(action_result)
                 overlay.update()
 
-                # Convert Action to Keypress
-                if action_result.action is not None:
-                    if action_result.triggered:
-                        if action_result.action == "prev":
-                            pyautogui.press(pyautogui.LEFT)
-                        elif action_result.action == "next":
-                            pyautogui.press(pyautogui.RIGHT)
+                if action_result.action is not None and action_result.triggered:
+                    if action_result.action == "prev":
+                        pyautogui.press(pyautogui.LEFT)
+                    elif action_result.action == "next":
+                        pyautogui.press(pyautogui.RIGHT)
+
+                # Record camera
+                if camera_writer is not None:
+                    camera_writer.write(frame)
+
+                # Record landmarks
+                if csv_writer is not None:
+                    save_landmarks_to_csv(
+                        csv_writer, timestamp, pose_result, gesture_detection_result, action_result
+                    )
 
                 if cv2.waitKey(1) & 0xFF == 27:
                     break
 
 video.release()
 cv2.destroyAllWindows()
+if camera_writer is not None:
+    camera_writer.release()
+
+csv_file.close()

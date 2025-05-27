@@ -13,11 +13,13 @@ class SpotlightOverlay(QtWidgets.QWidget):
         flags = (
             QtCore.Qt.FramelessWindowHint
             | QtCore.Qt.WindowStaysOnTopHint
-            | QtCore.Qt.Tool # hide task-bar icon
+            | QtCore.Qt.Tool  # hide task-bar icon
         )
         self.setWindowFlags(flags)
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
-        self.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)  # let clicks pass through
+        self.setAttribute(
+            QtCore.Qt.WA_TransparentForMouseEvents
+        )  # let clicks pass through
 
         # full screen
         screen = QtWidgets.QApplication.primaryScreen()
@@ -28,7 +30,7 @@ class SpotlightOverlay(QtWidgets.QWidget):
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         """
-            dim whole screen except for a circle in the center
+        dim whole screen except for a circle in the center
         """
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)

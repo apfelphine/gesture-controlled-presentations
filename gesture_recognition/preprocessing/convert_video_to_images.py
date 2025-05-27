@@ -20,23 +20,31 @@ OUTPUT_BASE_PATH = "../../data/cropped_hands"
 FINAL_IMAGE_SIZE = 256
 
 VISIBILITY_THRESHOLD = 0.3  # Minimum visibility in pose to count a hand as detected
-POSE_HAND_BUFFER_PERCENTAGE = 4.0  # Percentage to extend detected palm rectangle by for hand landmark recognition
+POSE_HAND_BUFFER_PERCENTAGE = (
+    4.0  # Percentage to extend detected palm rectangle by for hand landmark recognition
+)
 HAND_LANDMARK_MIN_CONFIDENCE = 0.5  # Minimum confidence to detect hand landmarks
-HAND_LANDMARK_BUFFER_PERCENTAGE = 0.1  # Percentage to extend detected hand by for final image
+HAND_LANDMARK_BUFFER_PERCENTAGE = (
+    0.1  # Percentage to extend detected hand by for final image
+)
 
 HASH_DISTANCE_THRESHOLD = 20  # higher -> images need to be more different
 
 pose_options = vision.PoseLandmarkerOptions(
-    base_options=python.BaseOptions(model_asset_path='../../tasks/pose_landmarker_heavy.task'),
+    base_options=python.BaseOptions(
+        model_asset_path="../../tasks/pose_landmarker_heavy.task"
+    ),
     output_segmentation_masks=True,
     running_mode=vision.RunningMode.VIDEO,
     num_poses=1,
 )
 hand_options = vision.HandLandmarkerOptions(
-    base_options=python.BaseOptions(model_asset_path='../../tasks/hand_landmarker.task'),
+    base_options=python.BaseOptions(
+        model_asset_path="../../tasks/hand_landmarker.task"
+    ),
     num_hands=1,
     running_mode=vision.RunningMode.VIDEO,
-    min_hand_detection_confidence=HAND_LANDMARK_MIN_CONFIDENCE
+    min_hand_detection_confidence=HAND_LANDMARK_MIN_CONFIDENCE,
 )
 
 hasher = cv2.img_hash.PHash_create()
@@ -73,8 +81,12 @@ def get_frames(path: str):
         capture.release()
 
 
-def bounding_square(points: List[Tuple[float, float]], max_width, max_height, buffer_percent: float = 0.0) -> Tuple[
-    Tuple[float, float], Tuple[float, float]]:
+def bounding_square(
+    points: List[Tuple[float, float]],
+    max_width,
+    max_height,
+    buffer_percent: float = 0.0,
+) -> Tuple[Tuple[float, float], Tuple[float, float]]:
     if not points:
         raise ValueError("Point list is empty")
 
@@ -129,7 +141,10 @@ def bounding_square(points: List[Tuple[float, float]], max_width, max_height, bu
         square_max_y -= abs(max_height - square_max_y - 1)
         square_max_y = max_height - 1
 
-    return (int(square_min_x), int(square_min_y)), (int(square_max_x), int(square_max_y))
+    return (int(square_min_x), int(square_min_y)), (
+        int(square_max_x),
+        int(square_max_y),
+    )
 
 
 def get_hand_rectangle(pose, index, frame, hand: Literal["left", "right"]):
@@ -138,13 +153,17 @@ def get_hand_rectangle(pose, index, frame, hand: Literal["left", "right"]):
     result = pose.detect_for_video(mp_image, index)
 
     indices = [
-        PoseLandmark.LEFT_WRIST, PoseLandmark.LEFT_PINKY,
-        PoseLandmark.LEFT_THUMB, PoseLandmark.LEFT_INDEX
+        PoseLandmark.LEFT_WRIST,
+        PoseLandmark.LEFT_PINKY,
+        PoseLandmark.LEFT_THUMB,
+        PoseLandmark.LEFT_INDEX,
     ]
     if hand == "right":
         indices = [
-            PoseLandmark.RIGHT_WRIST, PoseLandmark.RIGHT_PINKY,
-            PoseLandmark.RIGHT_THUMB, PoseLandmark.RIGHT_INDEX
+            PoseLandmark.RIGHT_WRIST,
+            PoseLandmark.RIGHT_PINKY,
+            PoseLandmark.RIGHT_THUMB,
+            PoseLandmark.RIGHT_INDEX,
         ]
 
     if result.pose_landmarks:
@@ -155,7 +174,7 @@ def get_hand_rectangle(pose, index, frame, hand: Literal["left", "right"]):
         return (
             bounding_square(points, width, height, POSE_HAND_BUFFER_PERCENTAGE),
             min_visibility,
-            result.segmentation_masks[0]
+            result.segmentation_masks[0],
         )
 
     return ((0, 0), (0, 0)), 0, None
@@ -171,7 +190,7 @@ def draw_cropped(frame, rect):
     w = end[0] - start[0]
     h = end[1] - start[1]
     frame = frame.copy()
-    return frame[start[1]:start[1] + h, start[0]:start[0] + w]
+    return frame[start[1] : start[1] + h, start[0] : start[0] + w]
 
 
 def resize(img, width, height):
@@ -186,10 +205,17 @@ def resize(img, width, height):
 
 
 def detect_and_write_hand(
-        hand_recogniser, pose_recogniser, frame, index: int, hand: Literal["left", "right"], out_path,
-        prev_hashes
+    hand_recogniser,
+    pose_recogniser,
+    frame,
+    index: int,
+    hand: Literal["left", "right"],
+    out_path,
+    prev_hashes,
 ):
-    rect, visibility, segmentation_mask_frame = get_hand_rectangle(pose_recogniser, index, frame, hand)
+    rect, visibility, segmentation_mask_frame = get_hand_rectangle(
+        pose_recogniser, index, frame, hand
+    )
     # rect = rectangular area which contains the hand
     # visibility = visibility of least visible hand landmark
     # segmentation_mask_frame = segmentation_mask of person on entire frame
@@ -198,22 +224,29 @@ def detect_and_write_hand(
         cropped_palm = draw_cropped(frame, rect)
 
         if cropped_palm is not None and len(cropped_palm) != 0:
-            visualized_mask = np.repeat(
-                segmentation_mask_frame.numpy_view()[:, :, np.newaxis], 3, axis=2
-            ) * 255
+            visualized_mask = (
+                np.repeat(
+                    segmentation_mask_frame.numpy_view()[:, :, np.newaxis], 3, axis=2
+                )
+                * 255
+            )
             visualized_mask = visualized_mask.astype(np.uint8)
             cropped_mask = draw_cropped(visualized_mask, rect)
 
             try:
-                cropped_palm_resized = resize(cropped_palm, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE)
-                cropped_mask_resized = resize(cropped_mask, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE)
+                cropped_palm_resized = resize(
+                    cropped_palm, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE
+                )
+                cropped_mask_resized = resize(
+                    cropped_mask, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE
+                )
             except Exception as e:
                 print("Failed to crop rect ", rect)
                 return
 
             res = hand_recogniser.detect_for_video(
                 mp.Image(image_format=mp.ImageFormat.SRGB, data=cropped_palm_resized),
-                index
+                index,
             )
             if res.hand_landmarks:
                 points = [
@@ -221,21 +254,34 @@ def detect_and_write_hand(
                     for lm in list(res.hand_landmarks)[0]
                 ]
 
-                square = bounding_square(points, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE, HAND_LANDMARK_BUFFER_PERCENTAGE)
+                square = bounding_square(
+                    points,
+                    FINAL_IMAGE_SIZE,
+                    FINAL_IMAGE_SIZE,
+                    HAND_LANDMARK_BUFFER_PERCENTAGE,
+                )
                 cropped_hand = draw_cropped(cropped_palm_resized, square)
                 cropped_hand_mask = draw_cropped(cropped_mask_resized, square)
 
                 try:
-                    final_hand = resize(cropped_hand, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE)
-                    final_mask = resize(cropped_hand_mask, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE)
+                    final_hand = resize(
+                        cropped_hand, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE
+                    )
+                    final_mask = resize(
+                        cropped_hand_mask, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE
+                    )
 
                     final_mask_gray = cv2.cvtColor(final_mask, cv2.COLOR_BGR2GRAY)
 
                     # Binarize mask (assumes white areas are hand, black is background)
-                    _, binary_mask = cv2.threshold(final_mask_gray, 127, 255, cv2.THRESH_BINARY)
+                    _, binary_mask = cv2.threshold(
+                        final_mask_gray, 127, 255, cv2.THRESH_BINARY
+                    )
 
                     # Apply mask to the hand
-                    final_hand_masked = cv2.bitwise_and(final_hand, final_hand, mask=binary_mask)
+                    final_hand_masked = cv2.bitwise_and(
+                        final_hand, final_hand, mask=binary_mask
+                    )
 
                     current_hash = hasher.compute(final_hand)
                     current_hash_mask = hasher.compute(final_hand_masked)
@@ -256,13 +302,14 @@ def detect_and_write_hand(
                         prev_hashes.append(current_hash)
                         prev_hashes.append(current_hash_mask)
                         cv2.imwrite(
-                            os.path.join(out_path, str(index) + ".png"),
-                            final_hand
+                            os.path.join(out_path, str(index) + ".png"), final_hand
                         )
                 except Exception:
                     frame_with_points = cropped_palm_resized.copy()
                     for p in points:
-                        frame_with_points = cv2.circle(frame_with_points, p, 1, (0, 0, 255), -1)
+                        frame_with_points = cv2.circle(
+                            frame_with_points, p, 1, (0, 0, 255), -1
+                        )
                     cv2.imshow("Frame with errors", frame_with_points)
                     if cv2.waitKey(1) & 0xFF == 27:
                         exit(0)
@@ -303,14 +350,24 @@ def main():
                     for frame in get_frames(video_path):
                         if left_hand_output_path:
                             detect_and_write_hand(
-                                hands, pose, frame, index, "left", left_hand_output_path
-                                , prev_hashes
+                                hands,
+                                pose,
+                                frame,
+                                index,
+                                "left",
+                                left_hand_output_path,
+                                prev_hashes,
                             )
 
                         if right_hand_output_path:
                             detect_and_write_hand(
-                                hands, pose, frame, index, "right", right_hand_output_path
-                                , prev_hashes
+                                hands,
+                                pose,
+                                frame,
+                                index,
+                                "right",
+                                right_hand_output_path,
+                                prev_hashes,
                             )
 
                         pbar.update(1)

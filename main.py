@@ -35,26 +35,38 @@ if recording_mode == RecordingMode.CAMERA:
     frame_width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fourcc_camera = cv2.VideoWriter_fourcc(*"mp4v")
-    camera_writer = cv2.VideoWriter(f"{folder_name}/camera.mp4", fourcc_camera, video.get(cv2.CAP_PROP_FPS) / 4,
-                                    (frame_width, frame_height))
+    camera_writer = cv2.VideoWriter(
+        f"{folder_name}/camera.mp4",
+        fourcc_camera,
+        video.get(cv2.CAP_PROP_FPS) / 4,
+        (frame_width, frame_height),
+    )
 
 csv_file = None
 csv_writer = None
 if recording_mode != RecordingMode.NONE:
     csv_file = open(f"{folder_name}/landmarks.csv", mode="w", newline="")
     csv_writer = csv.writer(csv_file)
-    col_names = ["timestamp", "pose", "hand_right", "gesture_right", "hand_left", "gesture_left", "action_result"]
+    col_names = [
+        "timestamp",
+        "pose",
+        "hand_right",
+        "gesture_right",
+        "hand_left",
+        "gesture_left",
+        "action_result",
+    ]
     csv_writer.writerow(col_names)
 
 gesture_recognition_options = vision.GestureRecognizerOptions(
     base_options=BaseOptions(
-        model_asset_path='gesture_recognition/gesture_recognizer_model/gesture_recognizer.task'
+        model_asset_path="gesture_recognition/gesture_recognizer_model/gesture_recognizer.task"
     ),
     running_mode=vision.RunningMode.VIDEO,
-    num_hands=2
+    num_hands=2,
 )
 pose_landmark_options = vision.PoseLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path='tasks/pose_landmarker_lite.task'),
+    base_options=BaseOptions(model_asset_path="tasks/pose_landmarker_lite.task"),
     running_mode=vision.RunningMode.VIDEO,
     output_segmentation_masks=False,
     num_poses=1,
@@ -65,8 +77,12 @@ start = time.perf_counter()
 action_controller = ActionController()
 
 with OverlayContextManager() as overlay:
-    with vision.GestureRecognizer.create_from_options(gesture_recognition_options) as gesture_recognizer:
-        with vision.PoseLandmarker.create_from_options(pose_landmark_options) as pose_landmark_detection:
+    with vision.GestureRecognizer.create_from_options(
+        gesture_recognition_options
+    ) as gesture_recognizer:
+        with vision.PoseLandmarker.create_from_options(
+            pose_landmark_options
+        ) as pose_landmark_detection:
             while video.isOpened():
                 ret, frame = video.read()
                 if not ret:
@@ -76,8 +92,12 @@ with OverlayContextManager() as overlay:
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
                 timestamp = int((time.perf_counter() - start) * 1000.0)
 
-                gesture_detection_result = gesture_recognizer.recognize_for_video(mp_image, timestamp)
-                pose_result = pose_landmark_detection.detect_for_video(mp_image, timestamp)
+                gesture_detection_result = gesture_recognizer.recognize_for_video(
+                    mp_image, timestamp
+                )
+                pose_result = pose_landmark_detection.detect_for_video(
+                    mp_image, timestamp
+                )
 
                 action_result = action_controller(gesture_detection_result, pose_result)
 
@@ -97,7 +117,11 @@ with OverlayContextManager() as overlay:
                 # Record landmarks
                 if csv_writer is not None:
                     save_landmarks_to_csv(
-                        csv_writer, timestamp, pose_result, gesture_detection_result, action_result
+                        csv_writer,
+                        timestamp,
+                        pose_result,
+                        gesture_detection_result,
+                        action_result,
                     )
 
                 if cv2.waitKey(1) & 0xFF == 27:

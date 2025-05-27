@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import argparse
@@ -10,9 +9,10 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
-CALIB_DWELL_SEC = 5            # time to hold finger on corner
+CALIB_DWELL_SEC = 5  # time to hold finger on corner
 SMOOTHING_WINDOW = 5
 CIRCLE_RADIUS = 15
+
 
 def find_fingertip(hand_landmarks, image_width: int, image_height: int):
     idx_tip = hand_landmarks.landmark[mp.solutions.hands.HandLandmark.INDEX_FINGER_TIP]
@@ -32,6 +32,7 @@ def exponential_moving_average(prev, new, alpha=0.3):
     if prev is None:
         return new
     return (1 - alpha) * prev + alpha * new
+
 
 def main():
     parser = argparse.ArgumentParser(description="Pointer demo")
@@ -59,7 +60,12 @@ def main():
 
     # Buffers for calibration
     corner_names = ["top‑left", "top‑right", "bottom‑right", "bottom‑left"]
-    corner_targets = [(0, 0), (args.width - 1, 0), (args.width - 1, args.height - 1), (0, args.height - 1)]
+    corner_targets = [
+        (0, 0),
+        (args.width - 1, 0),
+        (args.width - 1, args.height - 1),
+        (0, args.height - 1),
+    ]
 
     corner_samples: list[list[np.ndarray]] = [[] for _ in range(4)]
     current_corner = 0
@@ -99,16 +105,34 @@ def main():
         # Calibration:
         if homography is None:
             blank = np.zeros((args.height, args.width, 3), dtype=np.uint8)
-            cv2.putText(blank, f"Point at {corner_names[current_corner]} corner", (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            cv2.putText(
+                blank,
+                f"Point at {corner_names[current_corner]} corner",
+                (30, 60),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 255, 0),
+                2,
+            )
             if fingertip_px is not None:
                 cv2.circle(frame, fingertip_px, 8, (0, 0, 255), -1)
 
                 if dwell_start is None:
                     dwell_start = time.time()
                 elapsed = time.time() - dwell_start
-                corner_samples[current_corner].append(np.array(fingertip_px, dtype=np.float32))
+                corner_samples[current_corner].append(
+                    np.array(fingertip_px, dtype=np.float32)
+                )
 
-                cv2.putText(blank, f"Hold... {elapsed:.1f}s", (30, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                cv2.putText(
+                    blank,
+                    f"Hold... {elapsed:.1f}s",
+                    (30, 120),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (0, 255, 0),
+                    2,
+                )
                 if elapsed >= CALIB_DWELL_SEC:
                     current_corner += 1
                     dwell_start = None
@@ -116,7 +140,10 @@ def main():
 
                     if current_corner == 4:
                         # Fit homography
-                        src_pts = np.array([np.mean(samples, axis=0) for samples in corner_samples], dtype=np.float32)
+                        src_pts = np.array(
+                            [np.mean(samples, axis=0) for samples in corner_samples],
+                            dtype=np.float32,
+                        )
                         dst_pts = np.array(corner_targets, dtype=np.float32)
                         homography, _ = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC)
                         if homography is not None:
@@ -142,7 +169,9 @@ def main():
             smooth_pt = None
 
         if smooth_pt is not None and homography is not None:
-            proj_pt = cv2.perspectiveTransform(np.array([[smooth_pt]], dtype=np.float32), homography)[0][0]
+            proj_pt = cv2.perspectiveTransform(
+                np.array([[smooth_pt]], dtype=np.float32), homography
+            )[0][0]
             x, y = int(proj_pt[0]), int(proj_pt[1])
             if 0 <= x < args.width and 0 <= y < args.height:
                 cv2.circle(blank, (x, y), CIRCLE_RADIUS, (0, 0, 255), -1)

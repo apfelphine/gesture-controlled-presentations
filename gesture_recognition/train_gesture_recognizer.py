@@ -33,7 +33,7 @@ def show_sample_images():
             axs[i].imshow(plt.imread(os.path.join(label_dir, example_filenames[i])))
             axs[i].get_xaxis().set_visible(False)
             axs[i].get_yaxis().set_visible(False)
-        fig.suptitle(f'Showing {NUM_EXAMPLES} examples for {label}')
+        fig.suptitle(f"Showing {NUM_EXAMPLES} examples for {label}")
 
     plt.show()
 
@@ -41,7 +41,7 @@ def show_sample_images():
 def get_data():
     data = gesture_recognizer.Dataset.from_folder(
         dirname=dataset_path,
-        hparams=gesture_recognizer.HandDataPreprocessingParams(shuffle=True)
+        hparams=gesture_recognizer.HandDataPreprocessingParams(shuffle=True),
     )
     train_data, rest_data = data.split(0.8)
     validation_data, test_data = rest_data.split(0.5)
@@ -52,9 +52,7 @@ def train(train_data, validation_data):
     hparams = gesture_recognizer.HParams(export_dir="gesture_recognizer_model")
     options = gesture_recognizer.GestureRecognizerOptions(hparams=hparams)
     model = gesture_recognizer.GestureRecognizer.create(
-        train_data=train_data,
-        validation_data=validation_data,
-        options=options
+        train_data=train_data, validation_data=validation_data, options=options
     )
     return model
 
@@ -67,7 +65,7 @@ def main():
     model.export_model()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:

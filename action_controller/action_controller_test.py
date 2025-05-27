@@ -13,13 +13,13 @@ video = cv2.VideoCapture(0)
 
 gesture_recognition_options = vision.GestureRecognizerOptions(
     base_options=BaseOptions(
-        model_asset_path='../gesture_recognition/gesture_recognizer_model/gesture_recognizer.task'
+        model_asset_path="../gesture_recognition/gesture_recognizer_model/gesture_recognizer.task"
     ),
     running_mode=vision.RunningMode.VIDEO,
-    num_hands=2
+    num_hands=2,
 )
 pose_landmark_options = vision.PoseLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path='../tasks/pose_landmarker_heavy.task'),
+    base_options=BaseOptions(model_asset_path="../tasks/pose_landmarker_heavy.task"),
     running_mode=vision.RunningMode.VIDEO,
     output_segmentation_masks=False,
     num_poses=1,
@@ -32,8 +32,12 @@ last_action = None
 
 action_controller = action_controller.ActionController()
 
-with vision.GestureRecognizer.create_from_options(gesture_recognition_options) as recognizer:
-    with vision.PoseLandmarker.create_from_options(pose_landmark_options) as pose_landmark_detection:
+with vision.GestureRecognizer.create_from_options(
+    gesture_recognition_options
+) as recognizer:
+    with vision.PoseLandmarker.create_from_options(
+        pose_landmark_options
+    ) as pose_landmark_detection:
         while video.isOpened():
             ret, frame = video.read()
             if not ret:
@@ -61,8 +65,10 @@ with vision.GestureRecognizer.create_from_options(gesture_recognition_options) a
                 text = f"{action.value.upper()} ({action_result.gesture} / {action_result.hand.value})"
 
                 if action_result.swipe_distance is not None:
-                    text += (f" - swipe distance: {str(abs(round(action_result.swipe_distance, 2)))}/"
-                             f"{action_result.min_swipe_distance}")
+                    text += (
+                        f" - swipe distance: {str(abs(round(action_result.swipe_distance, 2)))}/"
+                        f"{action_result.min_swipe_distance}"
+                    )
                 else:
                     text += f"- count: {action_result.count}/{action_result.min_count}"
 
@@ -76,7 +82,9 @@ with vision.GestureRecognizer.create_from_options(gesture_recognition_options) a
                         slide_counter += 1
                         pyautogui.press(pyautogui.RIGHT)
 
-                frame = cv2.putText(frame, text, (30, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+                frame = cv2.putText(
+                    frame, text, (30, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2
+                )
 
             x, y, w, h = 256, 256, 80, 80
             cv2.rectangle(frame, (x, x), (x + w, y + h), (255, 255, 255), -1)
@@ -91,11 +99,11 @@ with vision.GestureRecognizer.create_from_options(gesture_recognition_options) a
             frame = cv2.putText(
                 frame,
                 slide_counter_text,
-            (x + int(w / 10), y + int(h / 2) + 10),
+                (x + int(w / 10), y + int(h / 2) + 10),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 1.5,
-            (0, 0, 0),
-                4
+                (0, 0, 0),
+                4,
             )
 
             cv2.imshow("Frame", frame)

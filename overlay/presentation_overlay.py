@@ -2,6 +2,7 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 import sys
 
 from action_controller.action_controller import ActionClassificationResult
+from pointing.pointer_controller import PointerMode
 
 
 class OverlayWindow(QtWidgets.QWidget):
@@ -25,6 +26,13 @@ class OverlayWindow(QtWidgets.QWidget):
         self.last_action = None
         self.action_color = (255, 0, 0)
         self.action_font = QtGui.QFont("Arial", 24, QtGui.QFont.Bold)
+
+        self.instruction_text = ""
+        self.instruction_font = QtGui.QFont("Arial", 32, QtGui.QFont.Bold)
+        self.instruction_color = (255, 255, 255)
+
+        self.pointer_pos = None
+        self.pointer_mode = PointerMode.DOT
 
         self.show()
 
@@ -54,8 +62,17 @@ class OverlayWindow(QtWidgets.QWidget):
         if action_result.triggered:
             self.action_color = (0, 255, 0)
 
+    def update_pointer(self, pointer_pos: tuple[int, int] | None, mode: PointerMode):
+        self.pointer_pos = pointer_pos
+        self.pointer_mode = mode
+    
+    def update_instruction(self, instruction_text: str):
+        self.instruction_text = instruction_text
+
     def paintEvent(self, event):
         self.__draw_action_result()
+        self.__draw_instruction()
+        self.__draw_pointer()   
 
     def __draw_action_result(self):
         if not self.action_text:
@@ -92,6 +109,54 @@ class OverlayWindow(QtWidgets.QWidget):
             self.action_text,
         )
 
+
+    def __draw_instruction(self):
+        if not self.instruction_text:
+            return
+
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+
+        padding = 20
+        fm = QtGui.QFontMetrics(self.instruction_font)
+        txt_rect = fm.boundingRect(self.instruction_text)
+
+        # centred rectangle
+        rect = QtCore.QRect(
+            (self.width()  - txt_rect.width()  - 2*padding)//2,
+            (self.height() - txt_rect.height() - 2*padding)//2,
+            txt_rect.width()  + 2*padding,
+            txt_rect.height() + 2*padding
+        )
+
+        # background
+        painter.setBrush(QtGui.QColor(0, 0, 0, 160))
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.drawRoundedRect(rect, 12, 12)
+
+        # text
+        painter.setPen(QtGui.QColor(*self.instruction_color))
+        painter.setFont(self.instruction_font)
+        painter.drawText(rect.adjusted(padding, padding, -padding, -padding),
+                         QtCore.Qt.AlignCenter, self.instruction_text)
+
+    def __draw_pointer(self):
+        if self.pointer_pos is None:
+            return
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        if self.pointer_mode is PointerMode.DOT:
+            r = 12
+            painter.setBrush(QtGui.QColor(255,0,0,200))
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.drawEllipse(QtCore.QPoint(*self.pointer_pos), r, r)
+        else:
+            grad = QtGui.QRadialGradient(QtCore.QPointF(*self.pointer_pos), 120)
+            grad.setColorAt(0, QtGui.QColor(255,255,255,0))
+            grad.setColorAt(1, QtGui.QColor(0,0,0,180))
+            painter.setBrush(QtGui.QBrush(grad))
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.drawRect(self.rect())
 
 class OverlayContextManager:
     def __init__(self):

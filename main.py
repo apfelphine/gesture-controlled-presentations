@@ -5,7 +5,7 @@ import mediapipe as mp
 import cv2
 
 from action_controller.action_controller import ActionController
-from action_controller.pointer_controller import PointerController
+from pointing.pointer_controller import PointerController, PointerState
 from overlay.presentation_overlay import OverlayContextManager
 
 BaseOptions = mp.tasks.BaseOptions
@@ -34,7 +34,7 @@ action_controller = ActionController()
 # todo: richtiges window fokussieren
 with OverlayContextManager() as overlay:
 
-    pointer = PointerController(overlay.rect.width(), overlay.rect.height()) 
+    pointing_controller = PointerController(overlay.width(), overlay.height()) 
 
     with vision.GestureRecognizer.create_from_options(gesture_recognition_options) as gesture_recognizer:
         with vision.PoseLandmarker.create_from_options(pose_landmark_options) as pose_landmark_detection:
@@ -62,37 +62,23 @@ with OverlayContextManager() as overlay:
                 # action_result.action (e.g. "point", "prev", "next")
                 # action_result.triggered
 
-                # todo: pointing target detection aufrufen
-                # todo: pointing target in overlay darstellen
-                # --------------------------------------------------------------------
-                fingertip_px = None
-                if action_result.action == "point":
-                    if gesture_detection_result.hand_landmarks:
-                        tip = gesture_detection_result.hand_landmarks[0][mp.solutions.hands.HandLandmark.INDEX_FINGER_TIP]
-                        h, w, _ = frame.shape
-                        fingertip_px = (int(tip.x * w), int(tip.y * h))
+                pointing_result = pointing_controller(gesture_detection_result, action_result, frame)
+                # pointing_result.position
+                # pointing_result.prompt
+                
+                # Running mode:
+                if not pointing_controller.state == PointerState.CALIBRATING:
+                    if action_result.action is not None:
+                        if action_result.triggered:
+                            if action_result.action == "prev":
+                                pyautogui.press(pyautogui.LEFT)
+                            elif action_result.action == "next":
+                                pyautogui.press(pyautogui.RIGHT)
 
-                pointer_pos, prompt = pointer.process_landmarks(fingertip_px)
-
-                # show instructions or runtime feedback in the same overlay box
-                if prompt:
-                    overlay.action_text = prompt
-
-                overlay._draw_pointer(pointer_pos, pointer.mode)
-                overlay.update()
-
-                # --------------------------------------------------------------------
+                overlay.update_pointer(pointing_result.position, pointing_controller.mode)
+                overlay.update_instruction(pointing_result.prompt)
                 overlay.update_action_result(action_result)
                 overlay.update()
-
-                # Convert Action to Keypress
-                if action_result.action is not None:
-                    if action_result.triggered:
-                        if action_result.action == "prev":
-                            pyautogui.press(pyautogui.LEFT)
-                        elif action_result.action == "next":
-                            pyautogui.press(pyautogui.RIGHT)
-
                 if cv2.waitKey(1) & 0xFF == 27:
                     break
 

@@ -10,15 +10,14 @@ VisionRunningMode = mp.tasks.vision.RunningMode
 video = cv2.VideoCapture(0)
 
 options = GestureRecognizerOptions(
-    base_options=BaseOptions(model_asset_path='gesture_recognizer_model/gesture_recognizer.task'),
+    base_options=BaseOptions(
+        model_asset_path="gesture_recognizer_model/gesture_recognizer.task"
+    ),
     running_mode=VisionRunningMode.VIDEO,
-    num_hands=2
+    num_hands=2,
 )
 
-HAND_COLORS = {
-    "Left": (0, 0, 255),   # Red
-    "Right": (255, 0, 0)   # Blue
-}
+HAND_COLORS = {"Left": (0, 0, 255), "Right": (255, 0, 0)}  # Red  # Blue
 
 timestamp = 0
 
@@ -39,7 +38,9 @@ with GestureRecognizer.create_from_options(options) as recognizer:
         height, width, _ = frame.shape
 
         if result.gestures and result.hand_landmarks and result.handedness:
-            for gesture_group, hand_landmarks, handedness in zip(result.gestures, result.hand_landmarks, result.handedness):
+            for gesture_group, hand_landmarks, handedness in zip(
+                result.gestures, result.hand_landmarks, result.handedness
+            ):
                 if gesture_group:
                     gesture_name = gesture_group[0].category_name
 
@@ -67,7 +68,15 @@ with GestureRecognizer.create_from_options(options) as recognizer:
                     else:
                         label = f"{hand_label}: {gesture_name}"
                     label_y = y_min - 10 if y_min - 10 > 10 else y_min + 20
-                    cv2.putText(frame, label, (x_min, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+                    cv2.putText(
+                        frame,
+                        label,
+                        (x_min, label_y),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.8,
+                        color,
+                        2,
+                    )
 
         cv2.imshow("Frame", frame)
 

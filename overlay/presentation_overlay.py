@@ -11,10 +11,10 @@ class OverlayWindow(QtWidgets.QWidget):
 
         # Fullscreen window flags: transparent, frameless, always-on-top, click-through
         self.setWindowFlags(
-            QtCore.Qt.WindowStaysOnTopHint |
-            QtCore.Qt.FramelessWindowHint |
-            QtCore.Qt.Tool |
-            QtCore.Qt.WindowTransparentForInput
+            QtCore.Qt.WindowStaysOnTopHint
+            | QtCore.Qt.FramelessWindowHint
+            | QtCore.Qt.Tool
+            | QtCore.Qt.WindowTransparentForInput
         )
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
 
@@ -50,8 +50,10 @@ class OverlayWindow(QtWidgets.QWidget):
             text = f"{action_result.action.value.upper()} ({action_result.gesture} / {action_result.hand.value})"
 
             if action_result.swipe_distance is not None:
-                text += (f" - swipe distance: {str(abs(round(action_result.swipe_distance, 2)))}/"
-                         f"{action_result.min_swipe_distance}")
+                text += (
+                    f" - swipe distance: {str(abs(round(action_result.swipe_distance, 2)))}/"
+                    f"{action_result.min_swipe_distance}"
+                )
             elif action_result.count is not None:
                 text += f" - count: {action_result.count}/{action_result.min_count}"
 
@@ -87,9 +89,10 @@ class OverlayWindow(QtWidgets.QWidget):
 
         # Create background rectangle with padding + margin from top-left screen corner
         rect = QtCore.QRect(
-            margin, margin,
+            margin,
+            margin,
             text_rect.width() + 2 * padding,
-            text_rect.height() + 2 * padding
+            text_rect.height() + 2 * padding,
         )
 
         # Draw translucent background box
@@ -100,8 +103,12 @@ class OverlayWindow(QtWidgets.QWidget):
         # Draw text inside the box
         painter.setPen(QtGui.QColor(*self.action_color))
         painter.setFont(self.action_font)
-        painter.drawText(rect.adjusted(padding, padding, -padding, -padding),
-                         QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, self.action_text)
+        painter.drawText(
+            rect.adjusted(padding, padding, -padding, -padding),
+            QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter,
+            self.action_text,
+        )
+
 
     def __draw_instruction(self):
         if not self.instruction_text:

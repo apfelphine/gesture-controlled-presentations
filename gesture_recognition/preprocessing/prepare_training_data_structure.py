@@ -36,5 +36,7 @@ for path in tqdm.tqdm(os.listdir(INPUT_BASE_PATH)):
         dest_name = f"{person}_{filename.split('.')[0]}_{hand}"
         if len(parts) > 3:
             dest_name += f"_{parts[3]}"
-        dest_name += "." + filename.split('.')[1]
-        shutil.copyfile(os.path.join(picture_path, filename), os.path.join(dest_path, dest_name))
+        dest_name += "." + filename.split(".")[1]
+        shutil.copyfile(
+            os.path.join(picture_path, filename), os.path.join(dest_path, dest_name)
+        )

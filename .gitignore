@@ -32,7 +32,7 @@ MANIFEST
 *.manifest
 *.spec
 
-# Installer logs
+# Installer recordings
 pip-log.txt
 pip-delete-this-directory.txt
 
@@ -183,3 +183,6 @@ data
 
 # Mediapipe tasks
 tasks
+
+# Recordings of runs
+recordings

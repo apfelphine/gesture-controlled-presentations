@@ -34,6 +34,8 @@ class OverlayWindow(QtWidgets.QWidget):
         self.pointer_pos = None
         self.pointer_mode = PointerMode.DOT
 
+        self.pointing_target = None
+
         self.show()
 
     def update_action_result(self, action_result: ActionClassificationResult):
@@ -65,14 +67,18 @@ class OverlayWindow(QtWidgets.QWidget):
     def update_pointer(self, pointer_pos: tuple[int, int] | None, mode: PointerMode):
         self.pointer_pos = pointer_pos
         self.pointer_mode = mode
-    
+
     def update_instruction(self, instruction_text: str):
         self.instruction_text = instruction_text
+
+    def update_pointing_target(self, target: (int, int)):
+        self.pointing_target = target
 
     def paintEvent(self, event):
         self.__draw_action_result()
         self.__draw_instruction()
-        self.__draw_pointer()   
+        self.__draw_pointing_target()
+        self.__draw_pointer()
 
     def __draw_action_result(self):
         if not self.action_text:
@@ -109,7 +115,6 @@ class OverlayWindow(QtWidgets.QWidget):
             self.action_text,
         )
 
-
     def __draw_instruction(self):
         if not self.instruction_text:
             return
@@ -123,10 +128,10 @@ class OverlayWindow(QtWidgets.QWidget):
 
         # centred rectangle
         rect = QtCore.QRect(
-            (self.width()  - txt_rect.width()  - 2*padding)//2,
-            (self.height() - txt_rect.height() - 2*padding)//2,
-            txt_rect.width()  + 2*padding,
-            txt_rect.height() + 2*padding
+            (self.width() - txt_rect.width() - 2 * padding) // 2,
+            (self.height() - txt_rect.height() - 2 * padding) // 2,
+            txt_rect.width() + 2 * padding,
+            txt_rect.height() + 2 * padding,
         )
 
         # background
@@ -137,8 +142,11 @@ class OverlayWindow(QtWidgets.QWidget):
         # text
         painter.setPen(QtGui.QColor(*self.instruction_color))
         painter.setFont(self.instruction_font)
-        painter.drawText(rect.adjusted(padding, padding, -padding, -padding),
-                         QtCore.Qt.AlignCenter, self.instruction_text)
+        painter.drawText(
+            rect.adjusted(padding, padding, -padding, -padding),
+            QtCore.Qt.AlignCenter,
+            self.instruction_text,
+        )
 
     def __draw_pointer(self):
         if self.pointer_pos is None:
@@ -147,16 +155,26 @@ class OverlayWindow(QtWidgets.QWidget):
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
         if self.pointer_mode is PointerMode.DOT:
             r = 12
-            painter.setBrush(QtGui.QColor(255,0,0,200))
+            painter.setBrush(QtGui.QColor(255, 0, 0, 200))
             painter.setPen(QtCore.Qt.NoPen)
             painter.drawEllipse(QtCore.QPoint(*self.pointer_pos), r, r)
         else:
             grad = QtGui.QRadialGradient(QtCore.QPointF(*self.pointer_pos), 120)
-            grad.setColorAt(0, QtGui.QColor(255,255,255,0))
-            grad.setColorAt(1, QtGui.QColor(0,0,0,180))
+            grad.setColorAt(0, QtGui.QColor(255, 255, 255, 0))
+            grad.setColorAt(1, QtGui.QColor(0, 0, 0, 180))
             painter.setBrush(QtGui.QBrush(grad))
             painter.setPen(QtCore.Qt.NoPen)
             painter.drawRect(self.rect())
+
+    def __draw_pointing_target(self):
+        if self.pointing_target is None:
+            return
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        r = 36
+        painter.setBrush(QtGui.QColor(0, 0, 255, 200))
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.drawEllipse(QtCore.QPoint(*self.pointing_target), r, r)
 
 class OverlayContextManager:
     def __init__(self):

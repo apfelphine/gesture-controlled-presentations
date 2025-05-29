@@ -290,7 +290,7 @@ class ActionController:
                     else:
                         current = scaled_delta_x
 
-                last_hand_landmarks = res.hand_landmarks
+                    last_hand_landmarks = res.hand_landmarks
 
                 min_ = self._min_swipe_distance
                 percentage = abs(current) / min_
@@ -302,6 +302,9 @@ class ActionController:
                     else self._min_exit_frame_count
                 )
                 percentage = current / min_
+
+            if res.hand_landmarks:
+                last_hand_landmarks = res.hand_landmarks
 
             gesture_count[key] = current, min_, frame
 

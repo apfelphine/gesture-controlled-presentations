@@ -23,7 +23,7 @@ class RecordingMode(str, Enum):
     CAMERA = "camera"
 
 
-recording_mode = RecordingMode.CAMERA
+recording_mode = RecordingMode.ONLY_LANDMARKS
 video = cv2.VideoCapture(0)
 
 folder_name = ""
@@ -59,6 +59,7 @@ if recording_mode != RecordingMode.NONE:
     ]
     csv_writer.writerow(col_names)
 
+
 def cleanup():
     video.release()
     if camera_writer:
@@ -66,6 +67,7 @@ def cleanup():
     if csv_file:
         csv_file.close()
     cv2.destroyAllWindows()
+
 
 gesture_recognition_options = vision.GestureRecognizerOptions(
     base_options=BaseOptions(
@@ -87,7 +89,7 @@ action_controller = ActionController()
 
 try:
     with OverlayContextManager() as overlay:
-        pointing_controller = PointerController(overlay.width(), overlay.height()) 
+        pointing_controller = PointerController(overlay.width(), overlay.height())
         with vision.GestureRecognizer.create_from_options(
             gesture_recognition_options
         ) as gesture_recognizer:
@@ -100,7 +102,9 @@ try:
                         break
 
                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+                    mp_image = mp.Image(
+                        image_format=mp.ImageFormat.SRGB, data=frame_rgb
+                    )
                     timestamp = int((time.perf_counter() - start) * 1000.0)
 
                     gesture_detection_result = gesture_recognizer.recognize_for_video(
@@ -110,10 +114,14 @@ try:
                         mp_image, timestamp
                     )
 
-                    action_result = action_controller(gesture_detection_result, pose_result)
+                    action_result = action_controller(
+                        gesture_detection_result, pose_result
+                    )
 
-                    pointing_result = pointing_controller(gesture_detection_result, action_result, frame)
-                    
+                    pointing_result = pointing_controller(
+                        gesture_detection_result, action_result, frame
+                    )
+
                     # Running mode:
                     if not pointing_controller.state == PointerState.CALIBRATING:
                         if action_result.action is not None and action_result.triggered:
@@ -122,7 +130,9 @@ try:
                             elif action_result.action == "next":
                                 pyautogui.press(pyautogui.RIGHT)
 
-                    overlay.update_pointer(pointing_result.position, pointing_controller.mode)
+                    overlay.update_pointer(
+                        pointing_result.position, pointing_controller.mode
+                    )
                     overlay.update_instruction(pointing_result.prompt)
                     overlay.update_action_result(action_result)
                     overlay.update()

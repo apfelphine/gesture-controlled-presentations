@@ -123,7 +123,8 @@ gesture_challenges = [
     ("Zeige Daumen hoch",
      lambda action_res, hands: action_res.gesture == "thumbs-up" and action_res.action == "prev" and action_res.hand == "left"),
 ]
-
+#gesture_challenges = []
+# Watch out, depending on screen size:
 pointing_challenges = [(50, 50), (500, 500), (250, 750), (1250, 1250), (750, 1250), (2500, 50), (2500, 1500)]
 challenge_timeout = 1000*30
 
@@ -176,34 +177,41 @@ try:
 
                     if len(gesture_challenges) > 0:
                         instruction = gesture_challenges[0][0]
-                        overlay.update_instruction(instruction)
+                        overlay.update_instruction(instruction, pointing_controller)
                     elif len(pointing_challenges) > 0:
-                        pointing_result = pointing_controller(gesture_detection_result, action_result, frame)
-                        if pointing_controller.state == PointerState.CALIBRATING and pointing_result.prompt:
-                            overlay.update_instruction(pointing_result.prompt)
-                            challenge_start = now
+                        if not pointing_controller.state == PointerState.ACTIVE:
+                            # need to calibrate first
+                            pointing_result = pointing_controller(gesture_detection_result, action_result, frame)
+                            overlay.update_instruction(pointing_result.prompt, pointing_controller, pointing_result.progress)
+                            overlay.update()
                         else:
-                            overlay.update_pointer(
-                                pointing_result.position, pointing_controller.mode
-                            )
-                            overlay.update_instruction("Zeige auf den Punkt")
-                            point_target = pointing_challenges[0]
-                            if pointing_result.position is not None:
-                                distance = math.dist(pointing_result.position, point_target)
-                                radius_target = 36
-                                radius_pointer = 12
-                                challenge_time = int((now - challenge_start) * 1000.0)
-                                if distance < (radius_pointer + radius_target) or challenge_time >= challenge_timeout:
-                                    pointing_challenges.pop(0)
-                                    metrics.append([point_target, challenge_time, challenge_frame_count, max(0, distance - (radius_pointer + radius_target))])
-                                    challenge_start = now
-                                    challenge_frame_count = 0
-                                else:
-                                    challenge_frame_count += 1
+                            challenge_start = now
+                            pointing_result = pointing_controller(gesture_detection_result, action_result, frame)
+                            if pointing_controller.state == PointerState.CALIBRATING and pointing_result.prompt:
+                                overlay.update_instruction(pointing_result.prompt, pointing_controller)
+                                challenge_start = now
+                            else:
+                                overlay.update_pointer(
+                                    pointing_result.position, pointing_controller.mode
+                                )
+                                overlay.update_instruction("Zeige auf den Punkt", pointing_controller)
+                                point_target = pointing_challenges[0]
+                                if pointing_result.position is not None:
+                                    distance = math.dist(pointing_result.position, point_target)
+                                    radius_target = 36
+                                    radius_pointer = 12
+                                    challenge_time = int((now - challenge_start) * 1000.0)
+                                    if distance < (radius_pointer + radius_target) or challenge_time >= challenge_timeout:
+                                        pointing_challenges.pop(0)
+                                        metrics.append([point_target, challenge_time, challenge_frame_count, max(0, distance - (radius_pointer + radius_target))])
+                                        challenge_start = now
+                                        challenge_frame_count = 0
+                                    else:
+                                        challenge_frame_count += 1
 
-                        if len(pointing_challenges) > 0 and pointing_controller.state != PointerState.CALIBRATING:
-                            point_target = pointing_challenges[0]
-                            overlay.update_pointing_target(point_target)
+                            if len(pointing_challenges) > 0 and pointing_controller.state != PointerState.CALIBRATING:
+                                point_target = pointing_challenges[0]
+                                overlay.update_pointing_target(point_target)
 
                     if len(gesture_challenges) == 0 and len(pointing_challenges) == 0:
                         overlay.update_instruction("Messung abgeschlossen. Vielen Dank.")

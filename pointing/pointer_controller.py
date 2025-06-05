@@ -1,10 +1,12 @@
 from enum import Enum, auto
-import cv2, time, numpy as np
+import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
+import cv2
 import mediapipe as mp
+import numpy as np
 
 
 class PointerState(Enum):
@@ -22,31 +24,41 @@ class PointerMode(Enum):
 class PointingResult:
     position: Optional[Tuple[int, int]] = None
     prompt: Optional[str] = None
+    progress: int = 0
 
 
 class PointerController:
-    CALIB_DWELL_SEC = 3
-    SMOOTH_WIN = 5
-    HIDE_TIMEOUT_MS = 300  # grace period against flicker
+    SMOOTH_WIN: int = 5
+    HIDE_TIMEOUT_MS: int = 300
+    CALIB_MIN_SAMPLES: int = 30
+    CALIB_STD_FRAC: float = 0.01
+    EDGE_GRACE_FRAC: float = 0.05
 
-    def __init__(self, proj_w: int, proj_h: int):
-        self.state = PointerState.CALIBRATING
-        self.mode = PointerMode.DOT
-        self._proj_size = (proj_w, proj_h)
-        self._corner_targets = [
+    def __init__(self, proj_w: int, proj_h: int, edge_grace_frac: Optional[float] = None):
+        self.state: PointerState = PointerState.CALIBRATING
+        self.mode: PointerMode = PointerMode.DOT
+        self._proj_size: Tuple[int, int] = (proj_w, proj_h)
+        self._corner_targets: List[Tuple[int, int]] = [
             (0, 0),
             (proj_w - 1, 0),
             (proj_w - 1, proj_h - 1),
             (0, proj_h - 1),
         ]
-        self._corner_names = ["top-left", "top-right", "bottom-right", "bottom-left"]
-        self._corner_samples = [[] for _ in range(4)]
-        self._current_corner = 0
-        self._dwell_start = None
-        self._H = None  # 3×3 homography (mapping matrix)
-        self._pts_buf = deque(maxlen=self.SMOOTH_WIN)
-        self._last_good_px = None
-        self._last_time_ms = 0
+        self._corner_names: List[str] = [
+            "top-left",
+            "top-right",
+            "bottom-right",
+            "bottom-left",
+        ]
+        if edge_grace_frac is not None:
+            self.EDGE_GRACE_FRAC = edge_grace_frac
+        self._calib_idx: int = 0
+        self._calib_samples: deque[Tuple[int, int]] = deque(maxlen=60)
+        self._camera_corners: List[Tuple[int, int]] = []
+        self._smooth_buffer: deque[Tuple[int, int]] = deque(maxlen=self.SMOOTH_WIN)
+        self._last_pointer_ts: float = 0.0
+        self._H: Optional[np.ndarray] = None
+        self._corner_progress: int = 0
 
     def __call__(
         self,
@@ -54,68 +66,105 @@ class PointerController:
         action_result,
         frame: np.ndarray,
     ) -> PointingResult:
-        fingertip_px = None
-        if action_result.action == "point":
-            if gesture_recognizer_result.hand_landmarks:
-                tip = gesture_recognizer_result.hand_landmarks[0][
-                    mp.solutions.hands.HandLandmark.INDEX_FINGER_TIP
-                ]
-                h, w, _ = frame.shape
-                fingertip_px = (int(tip.x * w), int(tip.y * h))
+        fingertip_px = self._extract_fingertip_px(gesture_recognizer_result, action_result, frame)
+        pointer_pos, prompt = self._process_landmarks(fingertip_px, frame.shape[:2])
+        return PointingResult(position=pointer_pos, prompt=prompt, progress=self._corner_progress)
 
-        pointer_pos, prompt = self._process_landmarks(fingertip_px)
-        return PointingResult(position=pointer_pos, prompt=prompt)
+    def toggle_mode(self) -> None:
+        self.mode = PointerMode.SPOTLIGHT if self.mode == PointerMode.DOT else PointerMode.DOT
+
+    def set_state(self, state: PointerState) -> None:
+        self.state = state
+
+    @staticmethod
+    def _extract_fingertip_px(
+        gesture_recognizer_result: mp.tasks.vision.GestureRecognizerResult,
+        action_result,
+        frame: np.ndarray,
+    ) -> Optional[Tuple[int, int]]:
+        if action_result.action != "point":
+            return None
+        if not gesture_recognizer_result.hand_landmarks:
+            return None
+        tip = gesture_recognizer_result.hand_landmarks[0][mp.solutions.hands.HandLandmark.INDEX_FINGER_TIP]
+        h, w = frame.shape[:2]
+        return int(tip.x * w), int(tip.y * h)
 
     def _process_landmarks(
-        self, fingertip_px: tuple[int, int] | None
-    ) -> tuple[tuple[int, int] | None, str]:
-        now = time.perf_counter() * 1000
-
-        # Calibration mode (to construct homography)
+        self,
+        fingertip_px: Optional[Tuple[int, int]],
+        frame_hw: Tuple[int, int],
+    ) -> Tuple[Optional[Tuple[int, int]], Optional[str]]:
         if self.state == PointerState.CALIBRATING:
-            text = f"Point at {self._corner_names[self._current_corner]} corner"
-            if fingertip_px:
-                if self._dwell_start is None:
-                    self._dwell_start = now
+            return self._calibration_step(fingertip_px, frame_hw)
+        if self.state == PointerState.ACTIVE:
+            return self._active_step(fingertip_px)
+        return None, None
 
-                dwell_time = (now - self._dwell_start) / 1000
-                text += f" {round(dwell_time, 2)}/{round(self.CALIB_DWELL_SEC, 2)}"
-                self._corner_samples[self._current_corner].append(
-                    np.float32(fingertip_px)
-                )
-                if dwell_time >= self.CALIB_DWELL_SEC:
-                    self._current_corner += 1
-                    self._dwell_start = None
-                    if self._current_corner == 4:
-                        self._fit_homography()
-                        self.state = PointerState.ACTIVE
-                        text = "Calibration complete"
-            else:
-                self._dwell_start = None
-            return None, text
-
-        # Inference mode:
+    def _calibration_step(
+        self,
+        fingertip_px: Optional[Tuple[int, int]],
+        frame_hw: Tuple[int, int],
+    ) -> Tuple[Optional[Tuple[int, int]], str]:
+        if self._calib_idx >= 4:
+            self._corner_progress = 100
+            return None, "complete"
+        prompt = self._corner_names[self._calib_idx]
         if fingertip_px is not None:
-            self._pts_buf.append(np.float32(fingertip_px))
-            self._last_time_ms = now
+            self._calib_samples.append(fingertip_px)
+        n = len(self._calib_samples)
+        sample_ratio = min(n / self.CALIB_MIN_SAMPLES, 1.0)
+        progress = int(sample_ratio * 100)
+        if n >= 2:
+            pts = np.array(self._calib_samples, dtype=np.float32)
+            mean = pts.mean(axis=0)
+            dists = np.linalg.norm(pts - mean, axis=1)
+            max_dim = max(frame_hw)
+            thresh = max_dim * self.CALIB_STD_FRAC
+            if n >= self.CALIB_MIN_SAMPLES and dists.std() > thresh:
+                progress = min(progress, 99)
+        self._corner_progress = progress
+        if n >= self.CALIB_MIN_SAMPLES:
+            pts = np.array(self._calib_samples, dtype=np.float32)
+            mean = pts.mean(axis=0)
+            dists = np.linalg.norm(pts - mean, axis=1)
+            max_dim = max(frame_hw)
+            thresh = max_dim * self.CALIB_STD_FRAC
+            if dists.std() <= thresh:
+                self._camera_corners.append(tuple(map(int, mean)))
+                self._calib_idx += 1
+                self._calib_samples.clear()
+                self._corner_progress = 0
+                if self._calib_idx == 4:
+                    src = np.array(self._camera_corners, dtype=np.float32)
+                    dst = np.array(self._corner_targets, dtype=np.float32)
+                    self._H, _ = cv2.findHomography(src, dst, method=0)
+                    self.state = PointerState.ACTIVE
+                    self._corner_progress = 100
+                    return None, "complete"
+                prompt = self._corner_names[self._calib_idx]
+        return None, prompt
 
-        # if lost the finger but still inside grace time, keep last pt
-        if now - self._last_time_ms < self.HIDE_TIMEOUT_MS and self._pts_buf:
-            avg_cam_px = np.mean(self._pts_buf, axis=0)
-            proj_pt = cv2.perspectiveTransform(avg_cam_px[None, None, :], self._H)[0, 0]
-            return (int(proj_pt[0]), int(proj_pt[1])), ""
-        else:
-            self._pts_buf.clear()
-            return None, ""
-
-    def toggle_mode(self):
-        self.mode = (
-            PointerMode.SPOTLIGHT if self.mode == PointerMode.DOT else PointerMode.DOT
-        )
-
-    def _fit_homography(self):
-        src = np.array(
-            [np.mean(samp, 0) for samp in self._corner_samples], dtype=np.float32
-        )
-        dst = np.array(self._corner_targets, dtype=np.float32)
-        self._H, _ = cv2.findHomography(src, dst, cv2.RANSAC)
+    def _active_step(self, fingertip_px: Optional[Tuple[int, int]]) -> Tuple[Optional[Tuple[int, int]], None]:
+        self._corner_progress = 100
+        now = time.time()
+        pointer_pos: Optional[Tuple[int, int]] = None
+        if fingertip_px is not None and self._H is not None:
+            pt = np.array([[fingertip_px]], dtype=np.float32)
+            mapped = cv2.perspectiveTransform(pt, self._H)[0, 0]
+            x, y = mapped.astype(int)
+            w, h = self._proj_size
+            grace_x = int(w * self.EDGE_GRACE_FRAC)
+            grace_y = int(h * self.EDGE_GRACE_FRAC)
+            if -grace_x <= x <= w - 1 + grace_x and -grace_y <= y <= h - 1 + grace_y:
+                self._smooth_buffer.append((x, y))
+                if len(self._smooth_buffer) == self.SMOOTH_WIN:
+                    xs, ys = zip(*self._smooth_buffer)
+                    pointer_pos = (int(np.mean(xs)), int(np.mean(ys)))
+                else:
+                    pointer_pos = (x, y)
+                self._last_pointer_ts = now
+        if pointer_pos is None and (now - self._last_pointer_ts) * 1000 > self.HIDE_TIMEOUT_MS:
+            self._smooth_buffer.clear()
+            return None, None
+        return pointer_pos, None

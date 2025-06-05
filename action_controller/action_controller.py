@@ -51,7 +51,7 @@ class ActionController:
             "thumb-point",
             "thumbs-up",
             "2finger",
-            "swipe",
+            #"swipe",
             "point",
         ]
         self._num_last_hands = 30
@@ -188,6 +188,17 @@ class ActionController:
                 value.triggered_action = res.action
                 if res.action is None or res.action != Action.POINT:
                     value.last_gestures = deque(maxlen=self._num_last_hands)
+                if res.action == Action.POINT:
+                    temp = deque(maxlen=self._num_last_hands)
+                    found_first_point = False
+                    for r in list(value.last_gestures):
+                        if r.gesture == "point":
+                            found_first_point = True
+                            temp.append(r)
+                        elif found_first_point:
+                            temp.append(r)
+                    value.last_gestures = temp
+
 
             if f < frame or (f <= frame and result.action is None):
                 result = res

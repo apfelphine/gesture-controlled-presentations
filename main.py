@@ -134,7 +134,7 @@ try:
                         pointing_result.position, pointing_controller.mode
                     )
                     overlay.update_instruction(pointing_result.prompt, pointing_controller, pointing_result.progress)
-                    overlay.update_action_result(action_result)
+                    overlay.update_action_text(gesture_detection_result, action_result)
                     overlay.update()
 
                     # Record camera

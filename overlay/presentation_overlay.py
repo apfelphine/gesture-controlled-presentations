@@ -1,20 +1,28 @@
 from PyQt5 import QtWidgets, QtCore, QtGui
-import sys
+import mediapipe as mp
 
 from action_controller.action_controller import ActionClassificationResult
 from pointing.pointer_controller import PointerMode, PointerState
 
 
 class OverlayWindow(QtWidgets.QWidget):
-
     _CALIB_CORNERS = [
         "top-left",
         "top-right",
         "bottom-left",
         "bottom-right",
     ]
-
     _CORNER_DELAY_MS = 2000
+
+    _ACTION_TRANSLATION_DICT = {
+        "point": "Laserpointer",
+        "next": "Nächste Folie",
+        "prev": "Vorherige Folie"
+    }
+    _HAND_TRANSLATION_DICT = {
+        "right": "Rechts",
+        "left": "Links"
+    }
 
     def __init__(self):
         super().__init__()
@@ -33,7 +41,7 @@ class OverlayWindow(QtWidgets.QWidget):
         self.action_text = ""
         self.last_action = None
         self.action_color = (255, 0, 0)
-        self.action_font = QtGui.QFont("Arial", 24, QtGui.QFont.Bold)
+        self.action_font = QtGui.QFont("Arial", 18, QtGui.QFont.Bold)
 
         self.instruction_text = ""
         self.previous_instruction_text = ""
@@ -48,24 +56,41 @@ class OverlayWindow(QtWidgets.QWidget):
 
         self.show()
 
-    def update_action_result(self, action_result: ActionClassificationResult):
+    def update_action_text(self, gesture_detection_result: mp.tasks.vision.GestureRecognizerResult,
+                           action_result: ActionClassificationResult):
         if action_result.action != self.last_action:
             self.action_color = (255, 0, 0)
         self.last_action = action_result.action
 
+        hand = None
+        gesture = None
         if not action_result.action:
-            self.action_text = ""
-            return
+            hands = [
+                self._HAND_TRANSLATION_DICT.get(h[0].category_name.lower(), "Unbekannt")
+                for h in gesture_detection_result.handedness
+            ]
 
-        if self.action_color != (0, 255, 0):
-            text = f"Recognized action: {action_result.action.value.capitalize()} "
+            if len(hands) == 0:
+                hand = "Keine"
+            else:
+                hand = " und ".join(hands)
+                gesture = "Keine"
+        elif self.action_color != (0, 255, 0):
+            hand = self._HAND_TRANSLATION_DICT.get(action_result.hand.value, "Unbekannt")
+            gesture = self._ACTION_TRANSLATION_DICT.get(action_result.action.value, "Unbekannt")
+
             if action_result.swipe_distance is not None:
-                text += (
-                    f"({str(abs(round(action_result.swipe_distance, 2)))}/"
+                gesture += (
+                    f" ({str(abs(round(action_result.swipe_distance, 2)))}/"
                     f"{action_result.min_swipe_distance})"
                 )
             elif action_result.count is not None:
-                text += f"({action_result.count}/{action_result.min_count})"
+                gesture += f" ({action_result.count}/{action_result.min_count})"
+
+        if hand is not None:
+            text = f"Erkannte Hand: {hand}"
+            if gesture is not None:
+                text += f"\nErkannte Geste: {gesture}"
             self.action_text = text
 
         if action_result.triggered:
@@ -75,7 +100,7 @@ class OverlayWindow(QtWidgets.QWidget):
         self.pointer_pos = pointer_pos
         self.pointer_mode = mode
 
-    def update_instruction(self, instruction_text: str, pointing_controller, progress = None):
+    def update_instruction(self, instruction_text: str, pointing_controller, progress=None):
         if progress:
             self.progress = progress
         if instruction_text in self._CALIB_CORNERS:
@@ -122,18 +147,27 @@ class OverlayWindow(QtWidgets.QWidget):
     def __draw_action_result(self):
         if not self.action_text:
             return
+
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
         margin, padding = 20, 10
+        painter.setFont(self.action_font)
         fm = QtGui.QFontMetrics(self.action_font)
-        rect_txt = fm.boundingRect(self.action_text)
-        rect_bg = QtCore.QRect(margin, margin, rect_txt.width() + 2 * padding, rect_txt.height() + 2 * padding)
+
+        rect_txt = fm.boundingRect(0, 0, self.width() - 2 * margin, 1000,  # large height to allow for multiple lines
+                                   QtCore.Qt.TextWordWrap, self.action_text)
+        rect_bg = QtCore.QRect(margin, margin,
+                               rect_txt.width() + 2 * padding,
+                               rect_txt.height() + 2 * padding)
+
         painter.setBrush(QtGui.QColor(0, 0, 0, 120))
         painter.setPen(QtCore.Qt.NoPen)
         painter.drawRoundedRect(rect_bg, 10, 10)
+
         painter.setPen(QtGui.QColor(*self.action_color))
-        painter.setFont(self.action_font)
-        painter.drawText(rect_bg.adjusted(padding, padding, -padding, -padding), QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, self.action_text)
+        painter.drawText(rect_bg.adjusted(padding, padding, -padding, -padding),
+                         QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop | QtCore.Qt.TextWordWrap,
+                         self.action_text)
 
     def __draw_instruction(self):
         if not self.instruction_text:
@@ -167,16 +201,16 @@ class OverlayWindow(QtWidgets.QWidget):
         fm = QtGui.QFontMetrics(self.instruction_font)
         rect_txt = fm.boundingRect(self.instruction_text)
         rect_bg = QtCore.QRect((self.width() - rect_txt.width() - 2 * padding) // 2,
-                            (self.height() - rect_txt.height() - 2 * padding) // 2,
-                            rect_txt.width() + 2 * padding,
-                            rect_txt.height() + 2 * padding)
+                               (self.height() - rect_txt.height() - 2 * padding) // 2,
+                               rect_txt.width() + 2 * padding,
+                               rect_txt.height() + 2 * padding)
         painter.setBrush(QtGui.QColor(0, 0, 0, 180))
         painter.setPen(QtCore.Qt.NoPen)
         painter.drawRoundedRect(rect_bg, 12, 12)
         painter.setPen(QtGui.QColor(*self.instruction_color))
         painter.setFont(self.instruction_font)
         painter.drawText(rect_bg.adjusted(padding, padding, -padding, -padding),
-                        QtCore.Qt.AlignCenter, self.instruction_text)
+                         QtCore.Qt.AlignCenter, self.instruction_text)
 
         if show_corner:
             bar_w, bar_h = 440, 56
@@ -187,7 +221,6 @@ class OverlayWindow(QtWidgets.QWidget):
             painter.setBrush(QtGui.QColor(0, 180, 0, 230))
             painter.drawRoundedRect(bar_x, bar_y,
                                     int(bar_w * self.progress / 100), bar_h, 6, 6)
-
 
     def __draw_pointer(self):
         if self.pointer_pos is None:

@@ -92,6 +92,7 @@ class OverlayWindow(QtWidgets.QWidget):
 
     def update_action_text(self, gesture_detection_result: mp.tasks.vision.GestureRecognizerResult,
                            action_result: ActionClassificationResult):
+
         if action_result.action != self.last_action:
             self.action_color = (255, 0, 0)
         self.last_action = action_result.action
@@ -103,39 +104,38 @@ class OverlayWindow(QtWidgets.QWidget):
         else:
             self.hand_landmarks_list = []
 
-        hand = None
         gesture = None
-        if not action_result.action:
-            hands = [
-                self._HAND_TRANSLATION_DICT.get(h[0].category_name.lower(), "Unbekannt")
-                for h in gesture_detection_result.handedness
-            ]
+        hands = [
+            self._HAND_TRANSLATION_DICT.get(h[0].category_name.lower(), "Unbekannt")
+            for h in gesture_detection_result.handedness
+        ]
 
-            if len(hands) == 0:
-                hand = "Keine"
-            else:
-                hand = " und ".join(hands)
-                gesture = "Keine"
-        elif self.action_color != (0, 255, 0):
-            hand = self._HAND_TRANSLATION_DICT.get(action_result.hand.value, "Unbekannt")
+        if len(hands) == 0:
+            hand = "Keine"
+        else:
+            hand = " und ".join(hands)
+            gesture = "Keine"
+
+        if action_result.action is not None:
+            gesture_hand = self._HAND_TRANSLATION_DICT.get(action_result.hand.value, "Unbekannt")
             gesture = self._ACTION_TRANSLATION_DICT.get(action_result.action.value, "Unbekannt")
 
-            if action_result.swipe_distance is not None:
-                gesture += (
-                    f" ({str(abs(round(action_result.swipe_distance, 2)))}/"
-                    f"{action_result.min_swipe_distance})"
-                )
-            elif action_result.count is not None:
-                gesture += f" ({action_result.count}/{action_result.min_count})"
+            gesture += (
+                f" ({str(abs(round(action_result.trigger_value, 2)))}/"
+                f"{action_result.trigger_threshold})"
+            )
+
+            if gesture_hand != hand:
+                gesture += f" - Hand: {gesture_hand}"
+
+            if action_result.triggered:
+                self.action_color = (0, 255, 0)
 
         if hand is not None:
             text = f"Erkannte Hand: {hand}"
             if gesture is not None:
                 text += f"\nErkannte Geste: {gesture}"
             self.action_text = text
-
-        if action_result.triggered:
-            self.action_color = (0, 255, 0)
 
     def update_pointer(self, pointer_pos: tuple[int, int] | None, mode: PointerMode):
         self.pointer_pos = pointer_pos
@@ -169,11 +169,12 @@ class OverlayWindow(QtWidgets.QWidget):
         self.pointing_target = target
 
     def paintEvent(self, event):
-        self.__draw_instruction()
         self.__draw_action_result()
+        self.__draw_hand_skeleton()
+
+        self.__draw_instruction()
         self.__draw_pointing_target()
         self.__draw_pointer()
-        self.__draw_hand_skeleton()
 
     def __set_instruction(self, text: str, color: tuple[int, int] | None = None):
         if not text and self.keep_instruction_visible:

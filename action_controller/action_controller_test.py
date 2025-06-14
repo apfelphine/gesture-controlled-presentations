@@ -53,14 +53,8 @@ with vision.GestureRecognizer.create_from_options(
 
         if action is not None:
             text = f"{action.value.upper()} ({action_result.gesture} / {action_result.hand.value})"
-
-            if action_result.swipe_distance is not None:
-                text += (
-                    f" - swipe distance: {str(abs(round(action_result.swipe_distance, 2)))}/"
-                    f"{action_result.min_swipe_distance}"
-                )
-            else:
-                text += f"- count: {action_result.count}/{action_result.min_count}"
+            text += (f" - {action_result.trigger_type}: "
+                     f"{str(abs(round(action_result.trigger_value, 2)))}/{action_result.trigger_threshold}")
 
             if action_result.triggered:
                 color = (0, 255, 0)

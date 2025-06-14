@@ -76,7 +76,6 @@ class ActionController:
     def __call__(
         self,
         gesture_recognizer_result: mp.tasks.vision.GestureRecognizerResult,
-        pose_landmarks_result: mp.tasks.vision.PoseLandmarkerResult,
     ) -> ActionClassificationResult:
         gesture_recognition_result: Dict[_Handedness, GestureRecognitionResult] = {
             _Handedness.LEFT: GestureRecognitionResult(),
@@ -94,72 +93,6 @@ class ActionController:
                 gesture_recognizer_result.handedness,
             ):
                 hand_label = handedness[0].category_name.lower()
-
-                # Correct handedness using pose landmarks since somtimes the model screws up
-                if pose_landmarks_result.pose_landmarks and len(
-                    pose_landmarks_result.pose_landmarks[0]
-                ):
-                    pose_landmarks = pose_landmarks_result.pose_landmarks[0]
-                    left_index = 15
-                    right_index = 16
-
-                    left_index_landmark = pose_landmarks[left_index]
-                    right_index_landmark = pose_landmarks[right_index]
-
-                    if (
-                        left_index_landmark
-                        and left_index_landmark.visibility
-                        <= self._min_visibility_pose_detection
-                    ):
-                        left_index_landmark = None
-
-                    if (
-                        right_index_landmark
-                        and right_index_landmark.visibility
-                        <= self._min_visibility_pose_detection
-                    ):
-                        right_index_landmark = None
-
-                    if right_index_landmark and left_index_landmark:
-                        x_coords = [l.x for l in hand_landmarks]
-                        avg_x = sum(x_coords) / len(x_coords)
-                        y_coords = [l.y for l in hand_landmarks]
-                        avg_y = sum(y_coords) / len(y_coords)
-
-                        distance_left = round(
-                            math.sqrt(
-                                math.pow(left_index_landmark.x - avg_x, 2)
-                                + math.pow(left_index_landmark.y - avg_y, 2)
-                            ),
-                            2,
-                        )
-                        distance_right = round(
-                            math.sqrt(
-                                math.pow(right_index_landmark.x - avg_x, 2)
-                                + math.pow(right_index_landmark.y - avg_y, 2)
-                            ),
-                            2,
-                        )
-                        if (
-                            distance_left < distance_right
-                            and distance_left < self._min_pose_hand_distance
-                            and right_index_landmark.visibility
-                            < left_index_landmark.visibility
-                        ):
-                            hand_label = _Handedness.LEFT
-                        elif (
-                            distance_left > distance_right
-                            and distance_right < self._min_pose_hand_distance
-                            and right_index_landmark.visibility
-                            > left_index_landmark.visibility
-                        ):
-                            hand_label = _Handedness.RIGHT
-                    elif left_index_landmark:
-                        hand_label = _Handedness.LEFT
-                    elif right_index_landmark:
-                        hand_label = _Handedness.RIGHT
-
-                gesture_recognition_result[hand_label].hand_landmarks = hand_landmarks
 
                 if gesture_group:
                     gesture_name = gesture_group[0].category_name

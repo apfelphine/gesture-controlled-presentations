@@ -42,6 +42,7 @@ class OverlayWindow(QtWidgets.QWidget):
         self.last_action = None
         self.action_color = (255, 0, 0)
         self.action_font = QtGui.QFont("Arial", 18, QtGui.QFont.Bold)
+        self.hand_landmarks_list = None
 
         self.instruction_text = ""
         self.previous_instruction_text = ""
@@ -56,11 +57,51 @@ class OverlayWindow(QtWidgets.QWidget):
 
         self.show()
 
+    @staticmethod
+    def sort_gesture_recognizer_result_by_min_x(
+            result: mp.tasks.vision.GestureRecognizerResult
+    ) -> mp.tasks.vision.GestureRecognizerResult:
+        # Extract min x for each hand
+        min_x_with_index = []
+        for i, landmarks in enumerate(result.hand_landmarks):
+            xs = [lm.x for lm in landmarks]
+            min_x = min(xs)
+            min_x_with_index.append((min_x, i))
+
+        # Sort by min x ascending
+        min_x_with_index.sort(key=lambda x: x[0], reverse=True)
+
+        # Reorder hand_landmarks and handedness
+        sorted_hand_landmarks = [result.hand_landmarks[i] for _, i in min_x_with_index]
+        sorted_handedness = [result.handedness[i] for _, i in min_x_with_index]
+
+        # Similarly, you might want to reorder gestures and hand_world_landmarks if needed
+        sorted_gestures = [result.gestures[i] for _, i in min_x_with_index] if hasattr(result, "gestures") else []
+        sorted_hand_world_landmarks = [result.hand_world_landmarks[i] for _, i in min_x_with_index] if hasattr(result,
+                                                                                                               "hand_world_landmarks") else []
+
+        # Create new result object (assuming you can instantiate like this)
+        sorted_result = mp.tasks.vision.GestureRecognizerResult(
+            gestures=sorted_gestures,
+            hand_landmarks=sorted_hand_landmarks,
+            hand_world_landmarks=sorted_hand_world_landmarks,
+            handedness=sorted_handedness
+        )
+
+        return sorted_result
+
     def update_action_text(self, gesture_detection_result: mp.tasks.vision.GestureRecognizerResult,
                            action_result: ActionClassificationResult):
         if action_result.action != self.last_action:
             self.action_color = (255, 0, 0)
         self.last_action = action_result.action
+
+        gesture_detection_result = self.sort_gesture_recognizer_result_by_min_x(gesture_detection_result)
+
+        if gesture_detection_result.hand_landmarks:
+            self.hand_landmarks_list = gesture_detection_result.hand_landmarks
+        else:
+            self.hand_landmarks_list = []
 
         hand = None
         gesture = None
@@ -132,6 +173,7 @@ class OverlayWindow(QtWidgets.QWidget):
         self.__draw_action_result()
         self.__draw_pointing_target()
         self.__draw_pointer()
+        self.__draw_hand_skeleton()
 
     def __set_instruction(self, text: str, color: tuple[int, int] | None = None):
         if not text and self.keep_instruction_visible:
@@ -249,6 +291,74 @@ class OverlayWindow(QtWidgets.QWidget):
         painter.setBrush(QtGui.QColor(0, 0, 255, 200))
         painter.setPen(QtCore.Qt.NoPen)
         painter.drawEllipse(QtCore.QPoint(*self.pointing_target), r, r)
+
+    def __draw_hand_skeleton(self):
+        if not self.hand_landmarks_list:
+            return
+
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+
+        target_wrist_height = 25
+        hand_spacing = 50
+        offset_y = 300
+        current_x = 50
+        connections = mp.solutions.hands.HAND_CONNECTIONS
+
+        def distance3D(a, b):
+            return ((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2) ** 0.5
+
+        for landmarks in self.hand_landmarks_list:
+            # Mirror x-coordinates
+            mirrored_landmarks = [
+                type(lm)(x=1.0 - lm.x, y=lm.y, z=lm.z) for lm in landmarks
+            ]
+
+            # Reference bone scaling
+            lm0, lm1 = mirrored_landmarks[0], mirrored_landmarks[1]
+            wrist_height_norm = distance3D(lm0, lm1)
+            if wrist_height_norm == 0:
+                print("Skipping landmarks due to invalid wrist height...", landmarks)
+                continue
+
+            scale = target_wrist_height / wrist_height_norm
+
+            # Compute bounds and offsets
+            min_x = min(lm.x for lm in mirrored_landmarks)
+            min_y = min(lm.y for lm in mirrored_landmarks)
+            wrist_offset_y = (lm0.y - min_y) * scale
+
+            # Draw bones
+            bone_pen = QtGui.QPen(QtGui.QColor(224, 224, 224), 3)
+            painter.setPen(bone_pen)
+
+            for start_idx, end_idx in connections:
+                start = mirrored_landmarks[start_idx]
+                end = mirrored_landmarks[end_idx]
+
+                sx = (start.x - min_x) * scale
+                sy = (start.y - min_y) * scale
+                ex = (end.x - min_x) * scale
+                ey = (end.y - min_y) * scale
+
+                pt_start = QtCore.QPointF(current_x + sx, offset_y + sy - wrist_offset_y)
+                pt_end = QtCore.QPointF(current_x + ex, offset_y + ey - wrist_offset_y)
+                painter.drawLine(pt_start, pt_end)
+
+            # Draw joints
+            joint_brush = QtGui.QBrush(QtGui.QColor(192, 101, 21))
+            joint_pen = QtGui.QPen(QtGui.QColor(224, 224, 224), 1)
+            painter.setBrush(joint_brush)
+            painter.setPen(joint_pen)
+
+            for lm in mirrored_landmarks:
+                cx = current_x + (lm.x - min_x) * scale
+                cy = offset_y + (lm.y - min_y) * scale - wrist_offset_y
+                painter.drawEllipse(QtCore.QPointF(cx, cy), 5, 5)
+
+            # Advance for next hand
+            hand_width_px = (max(lm.x for lm in mirrored_landmarks) - min_x) * scale
+            current_x += hand_width_px + hand_spacing
 
 
 class OverlayContextManager:

@@ -23,7 +23,7 @@ class RecordingMode(str, Enum):
     CAMERA = "camera"
 
 
-recording_mode = RecordingMode.ONLY_LANDMARKS
+recording_mode = RecordingMode.NONE
 video = cv2.VideoCapture(0)
 
 folder_name = ""

@@ -38,11 +38,16 @@ class OverlayWindow(QtWidgets.QWidget):
         screen_geometry = QtWidgets.QApplication.primaryScreen().geometry()
         self.setGeometry(screen_geometry)
 
-        self.action_text = ""
-        self.last_action = None
+        
         self.action_color = (255, 0, 0)
         self.action_font = QtGui.QFont("Arial", 18, QtGui.QFont.Bold)
-        self.hand_landmarks_list = None
+        self.action_text = ""
+
+        self.last_action = None
+        self._last_action_hand = None
+        
+        self._last_gesture_detection_result = None
+        
 
         self.instruction_text = ""
         self.previous_instruction_text = ""
@@ -98,11 +103,7 @@ class OverlayWindow(QtWidgets.QWidget):
         self.last_action = action_result.action
 
         gesture_detection_result = self.sort_gesture_recognizer_result_by_min_x(gesture_detection_result)
-
-        if gesture_detection_result.hand_landmarks:
-            self.hand_landmarks_list = gesture_detection_result.hand_landmarks
-        else:
-            self.hand_landmarks_list = []
+        self._last_gesture_detection_result = gesture_detection_result
 
         gesture = None
         hands = [
@@ -116,10 +117,11 @@ class OverlayWindow(QtWidgets.QWidget):
             hand = " und ".join(hands)
             gesture = "Keine"
 
+        self._last_action_hand = None
         if action_result.action is not None:
             gesture_hand = self._HAND_TRANSLATION_DICT.get(action_result.hand.value, "Unbekannt")
             gesture = self._ACTION_TRANSLATION_DICT.get(action_result.action.value, "Unbekannt")
-
+            self._last_action_hand = action_result.hand.value.lower()
             gesture += (
                 f" ({str(abs(round(action_result.trigger_value, 2)))}/"
                 f"{action_result.trigger_threshold})"
@@ -294,7 +296,7 @@ class OverlayWindow(QtWidgets.QWidget):
         painter.drawEllipse(QtCore.QPoint(*self.pointing_target), r, r)
 
     def __draw_hand_skeleton(self):
-        if not self.hand_landmarks_list:
+        if not self._last_gesture_detection_result or not self._last_gesture_detection_result.hand_landmarks:
             return
 
         painter = QtGui.QPainter(self)
@@ -309,7 +311,7 @@ class OverlayWindow(QtWidgets.QWidget):
         def distance3D(a, b):
             return ((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2) ** 0.5
 
-        for landmarks in self.hand_landmarks_list:
+        for idx, landmarks in enumerate(self._last_gesture_detection_result.hand_landmarks):
             # Mirror x-coordinates
             mirrored_landmarks = [
                 type(lm)(x=1.0 - lm.x, y=lm.y, z=lm.z) for lm in landmarks
@@ -347,7 +349,9 @@ class OverlayWindow(QtWidgets.QWidget):
                 painter.drawLine(pt_start, pt_end)
 
             # Draw joints
-            joint_brush = QtGui.QBrush(QtGui.QColor(192, 101, 21))
+            hand = self._last_gesture_detection_result.handedness[idx][0].category_name.lower()
+            active_hand = self._last_action_hand == hand
+            joint_brush = QtGui.QBrush(QtGui.QColor(48, 255, 48) if active_hand else QtGui.QColor(192, 101, 21))
             joint_pen = QtGui.QPen(QtGui.QColor(224, 224, 224), 1)
             painter.setBrush(joint_brush)
             painter.setPen(joint_pen)

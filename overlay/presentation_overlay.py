@@ -48,7 +48,7 @@ class OverlayWindow(QtWidgets.QWidget):
         {
             ActionState.NONE: (75, 123, 236),  # Medium Blue
             ActionState.RECOGNIZED: (70, 130, 180),  # Steel Blue (gut sichtbar)
-            ActionState.TRIGGERED:  (153, 199, 255),  # Light Blue
+            ActionState.TRIGGERED: (153, 199, 255),  # Light Blue
         },
         # 🔋 High Contrast (barrierefrei, gut sichtbar)
         {
@@ -334,9 +334,9 @@ class OverlayWindow(QtWidgets.QWidget):
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
 
-        target_wrist_height = 25
+        target_wrist_height = 30
         hand_spacing = 50
-        offset_y = 300
+        offset_y = 325
         current_x = 50
         connections = mp.solutions.hands.HAND_CONNECTIONS
 
@@ -363,8 +363,36 @@ class OverlayWindow(QtWidgets.QWidget):
             min_y = min(lm.y for lm in mirrored_landmarks)
             wrist_offset_y = (lm0.y - min_y) * scale
 
-            # Draw bones
-            bone_pen = QtGui.QPen(QtGui.QColor(224, 224, 224), 3)
+            bg_pen = QtGui.QPen(QtGui.QColor(0, 0, 0, 120), 20, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap)
+            painter.setPen(bg_pen)
+            for start_idx, end_idx in connections:
+                start = mirrored_landmarks[start_idx]
+                end = mirrored_landmarks[end_idx]
+
+                sx = (start.x - min_x) * scale
+                sy = (start.y - min_y) * scale
+                ex = (end.x - min_x) * scale
+                ey = (end.y - min_y) * scale
+
+                pt_start = QtCore.QPointF(current_x + sx, offset_y + sy - wrist_offset_y)
+                pt_end = QtCore.QPointF(current_x + ex, offset_y + ey - wrist_offset_y)
+
+                # Background line
+                painter.drawLine(pt_start, pt_end)
+
+            bg_brush = QtGui.QBrush(QtGui.QColor(0, 0, 0, 120))
+            painter.setBrush(bg_brush)
+            painter.setPen(QtCore.Qt.NoPen)
+
+            for lm in mirrored_landmarks:
+                cx = current_x + (lm.x - min_x) * scale
+                cy = offset_y + (lm.y - min_y) * scale - wrist_offset_y
+
+                # Draw background circle (e.g., radius 7, semi-transparent black)
+
+                painter.drawEllipse(QtCore.QPointF(cx, cy), 14, 14)
+
+            bone_pen = QtGui.QPen(QtGui.QColor(224, 224, 224), 3, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap)
             painter.setPen(bone_pen)
 
             for start_idx, end_idx in connections:
@@ -378,6 +406,7 @@ class OverlayWindow(QtWidgets.QWidget):
 
                 pt_start = QtCore.QPointF(current_x + sx, offset_y + sy - wrist_offset_y)
                 pt_end = QtCore.QPointF(current_x + ex, offset_y + ey - wrist_offset_y)
+
                 painter.drawLine(pt_start, pt_end)
 
             # Draw joints
@@ -388,13 +417,17 @@ class OverlayWindow(QtWidgets.QWidget):
                 if active_hand else
                 QtGui.QColor(*self._action_color_scheme[self.ActionState.NONE])
             )
-            joint_pen = QtGui.QPen(QtGui.QColor(224, 224, 224), 1)
+            joint_pen = QtGui.QPen(QtGui.QColor(224, 224, 224), 2)
             painter.setBrush(joint_brush)
             painter.setPen(joint_pen)
 
             for lm in mirrored_landmarks:
                 cx = current_x + (lm.x - min_x) * scale
                 cy = offset_y + (lm.y - min_y) * scale - wrist_offset_y
+
+                # Draw foreground circle (actual joint)
+                painter.setBrush(joint_brush)
+                painter.setPen(joint_pen)
                 painter.drawEllipse(QtCore.QPointF(cx, cy), 5, 5)
 
             # Advance for next hand

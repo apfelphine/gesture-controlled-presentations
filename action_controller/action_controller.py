@@ -45,7 +45,7 @@ class ActionClassificationResult:
 class ActionController:
     def __init__(self):
         self._enabled_gestures = [
-            "pinky-point", "thumb-point", "thumbs-up", "2finger", "point", "swipe"
+            "pinky-point", "thumb-point", "thumbs-up", "2finger", "point",  # "swipe"
         ]
         self._num_last_hands = 30
         self._min_trigger_frame_count = 4

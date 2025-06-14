@@ -157,7 +157,7 @@ try:
                     )
 
                     action_result = action_controller(
-                        gesture_detection_result, pose_result
+                        gesture_detection_result
                     )
 
                     calibrating = False

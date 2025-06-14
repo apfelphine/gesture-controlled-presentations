@@ -23,7 +23,7 @@ class RecordingMode(str, Enum):
     CAMERA = "camera"
 
 
-recording_mode = RecordingMode.ONLY_LANDMARKS
+recording_mode = RecordingMode.NONE
 video = cv2.VideoCapture(0)
 
 folder_name = ""
@@ -115,7 +115,7 @@ try:
                     )
 
                     action_result = action_controller(
-                        gesture_detection_result, pose_result
+                        gesture_detection_result
                     )
 
                     pointing_result = pointing_controller(

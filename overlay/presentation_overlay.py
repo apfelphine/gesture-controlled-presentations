@@ -1,3 +1,5 @@
+import enum
+
 from PyQt5 import QtWidgets, QtCore, QtGui
 import mediapipe as mp
 
@@ -24,6 +26,44 @@ class OverlayWindow(QtWidgets.QWidget):
         "left": "Links"
     }
 
+    class ActionState(str, enum.Enum):
+        NONE = "none"
+        RECOGNIZED = "recognized"
+        TRIGGERED = "triggered"
+
+    _COLOR_SCHEMES = [
+        # 🎨 Cool Tones (ruhig, modern)
+        {
+            ActionState.NONE: (66, 135, 245),  # Cool Blue
+            ActionState.RECOGNIZED: (54, 209, 153),  # Aqua Green
+            ActionState.TRIGGERED: (175, 255, 87),  # Lime Yellow
+        },
+        # 🌅 Sunset Palette (warm, organisch)
+        {
+            ActionState.NONE: (255, 94, 87),  # Coral Red
+            ActionState.RECOGNIZED: (255, 165, 89),  # Soft Orange
+            ActionState.TRIGGERED: (255, 221, 89),  # Golden Yellow
+        },
+        # 🧊 Monochrome Blue Gradient (minimalistisch)
+        {
+            ActionState.NONE: (75, 123, 236),  # Medium Blue
+            ActionState.RECOGNIZED: (70, 130, 180),  # Steel Blue (gut sichtbar)
+            ActionState.TRIGGERED:  (153, 199, 255),  # Light Blue
+        },
+        # 🔋 High Contrast (barrierefrei, gut sichtbar)
+        {
+            ActionState.NONE: (128, 170, 255),  # Hellblau
+            ActionState.RECOGNIZED: (255, 255, 0),  # Leuchtgelb
+            ActionState.TRIGGERED: (0, 255, 0),  # Neongrün
+        },
+        # 🌈 Playful Vibrant (lebendig, verspielt)
+        {
+            ActionState.NONE: (255, 64, 129),  # Pink
+            ActionState.RECOGNIZED: (255, 196, 0),  # Amber
+            ActionState.TRIGGERED: (0, 230, 118),  # Spring Green
+        },
+    ]
+
     def __init__(self):
         super().__init__()
 
@@ -38,16 +78,13 @@ class OverlayWindow(QtWidgets.QWidget):
         screen_geometry = QtWidgets.QApplication.primaryScreen().geometry()
         self.setGeometry(screen_geometry)
 
-        
-        self.action_color = (255, 0, 0)
+        self._action_color_scheme = self._COLOR_SCHEMES[3]
         self.action_font = QtGui.QFont("Arial", 18, QtGui.QFont.Bold)
         self.action_text = ""
 
-        self.last_action = None
         self._last_action_hand = None
-        
         self._last_gesture_detection_result = None
-        
+        self._action_state = self.ActionState.NONE
 
         self.instruction_text = ""
         self.previous_instruction_text = ""
@@ -97,11 +134,6 @@ class OverlayWindow(QtWidgets.QWidget):
 
     def update_action_text(self, gesture_detection_result: mp.tasks.vision.GestureRecognizerResult,
                            action_result: ActionClassificationResult):
-
-        if action_result.action != self.last_action:
-            self.action_color = (255, 0, 0)
-        self.last_action = action_result.action
-
         gesture_detection_result = self.sort_gesture_recognizer_result_by_min_x(gesture_detection_result)
         self._last_gesture_detection_result = gesture_detection_result
 
@@ -118,8 +150,8 @@ class OverlayWindow(QtWidgets.QWidget):
             gesture = "Keine"
 
         self._last_action_hand = None
+
         if action_result.action is not None:
-            gesture_hand = self._HAND_TRANSLATION_DICT.get(action_result.hand.value, "Unbekannt")
             gesture = self._ACTION_TRANSLATION_DICT.get(action_result.action.value, "Unbekannt")
             self._last_action_hand = action_result.hand.value.lower()
             gesture += (
@@ -127,12 +159,12 @@ class OverlayWindow(QtWidgets.QWidget):
                 f"{action_result.trigger_threshold})"
             )
 
-            if gesture_hand != hand:
-                gesture += f" - Hand: {gesture_hand}"
-
             if action_result.triggered:
-                self.action_color = (0, 255, 0)
-
+                self._action_state = self.ActionState.TRIGGERED
+            elif self._action_state == self.ActionState.NONE:
+                self._action_state = self.ActionState.RECOGNIZED
+        else:
+            self._action_state = self.ActionState.NONE
         if hand is not None:
             text = f"Erkannte Hand: {hand}"
             if gesture is not None:
@@ -209,7 +241,7 @@ class OverlayWindow(QtWidgets.QWidget):
         painter.setPen(QtCore.Qt.NoPen)
         painter.drawRoundedRect(rect_bg, 10, 10)
 
-        painter.setPen(QtGui.QColor(*self.action_color))
+        painter.setPen(QtGui.QColor(*self._action_color_scheme[self._action_state]))
         painter.drawText(rect_bg.adjusted(padding, padding, -padding, -padding),
                          QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop | QtCore.Qt.TextWordWrap,
                          self.action_text)
@@ -351,7 +383,11 @@ class OverlayWindow(QtWidgets.QWidget):
             # Draw joints
             hand = self._last_gesture_detection_result.handedness[idx][0].category_name.lower()
             active_hand = self._last_action_hand == hand
-            joint_brush = QtGui.QBrush(QtGui.QColor(48, 255, 48) if active_hand else QtGui.QColor(192, 101, 21))
+            joint_brush = QtGui.QBrush(
+                QtGui.QColor(*self._action_color_scheme[self._action_state])
+                if active_hand else
+                QtGui.QColor(*self._action_color_scheme[self.ActionState.NONE])
+            )
             joint_pen = QtGui.QPen(QtGui.QColor(224, 224, 224), 1)
             painter.setBrush(joint_brush)
             painter.setPen(joint_pen)

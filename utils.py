@@ -17,10 +17,8 @@ def _action_result_to_dict(action_result):
         "gesture": action_result.gesture,
         "hand": action_result.hand,
         "triggered": action_result.triggered,
-        "min_count": action_result.min_count,
-        "count": action_result.count,
-        "min_swipe_distance": action_result.min_swipe_distance,
-        "swipe_distance": action_result.swipe_distance,
+        "trigger_threshold": action_result.trigger_threshold,
+        "trigger_value": action_result.trigger_value,
     }
 
 

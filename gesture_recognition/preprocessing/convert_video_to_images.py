@@ -68,7 +68,7 @@ def main():
             continue
 
         video_path = os.path.join(VIDEOS_PATH, path)
-        name = path.strip(".mp4")
+        name = path.split(".mp4")[0]
         output_path = os.path.join(OUTPUT_BASE_PATH, name)
 
         fps, width, height, n_frames = get_video_params(video_path)

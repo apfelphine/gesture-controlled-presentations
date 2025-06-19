@@ -21,6 +21,13 @@ class OverlayWindow(QtWidgets.QWidget):
         "next": "Nächste Folie",
         "prev": "Vorherige Folie"
     }
+    _GESTURE_TRANSLATION_DICT = {
+        "point": "Point",
+        "pinky-point": "Kleiner Finger hoch",
+        "thumb-point": "Zeigen mit Daumen",
+        "thumbs-up": "Daumen hoch",
+        "2finger": "Zeigen mit zwei Fingern"
+    }
     _HAND_TRANSLATION_DICT = {
         "right": "Rechts",
         "left": "Links"
@@ -133,10 +140,11 @@ class OverlayWindow(QtWidgets.QWidget):
         return sorted_result
 
     def update_action_text(self, gesture_detection_result: mp.tasks.vision.GestureRecognizerResult,
-                           action_result: ActionClassificationResult):
+                           action_result: ActionClassificationResult, show_action=True):
         gesture_detection_result = self.sort_gesture_recognizer_result_by_min_x(gesture_detection_result)
         self._last_gesture_detection_result = gesture_detection_result
 
+        action = None
         gesture = None
         hands = [
             self._HAND_TRANSLATION_DICT.get(h[0].category_name.lower(), "Unbekannt")
@@ -147,27 +155,35 @@ class OverlayWindow(QtWidgets.QWidget):
             hand = "Keine"
         else:
             hand = " und ".join(hands)
+            action = "Keine"
             gesture = "Keine"
 
         self._last_action_hand = None
 
         if action_result.action is not None:
-            gesture = self._ACTION_TRANSLATION_DICT.get(action_result.action.value, "Unbekannt")
+            action = self._ACTION_TRANSLATION_DICT.get(action_result.action.value, "Unbekannt")
+            gesture = self._GESTURE_TRANSLATION_DICT.get(action_result.gesture, "Unbekannt")
             self._last_action_hand = action_result.hand.value.lower()
-            gesture += (
+            action += (
                 f" ({str(abs(round(action_result.trigger_value, 2)))}/"
                 f"{action_result.trigger_threshold})"
             )
 
-            if action_result.triggered:
+            if show_action:
+                if action_result.triggered:
+                    self._action_state = self.ActionState.TRIGGERED
+                elif self._action_state == self.ActionState.NONE:
+                    self._action_state = self.ActionState.RECOGNIZED
+            else:
                 self._action_state = self.ActionState.TRIGGERED
-            elif self._action_state == self.ActionState.NONE:
-                self._action_state = self.ActionState.RECOGNIZED
         else:
             self._action_state = self.ActionState.NONE
+
         if hand is not None:
             text = f"Erkannte Hand: {hand}"
-            if gesture is not None:
+            if action is not None and show_action:
+                text += f"\nErkannte Aktion: {action}"
+            elif gesture is not None:
                 text += f"\nErkannte Geste: {gesture}"
             self.action_text = text
 
@@ -175,7 +191,7 @@ class OverlayWindow(QtWidgets.QWidget):
         self.pointer_pos = pointer_pos
         self.pointer_mode = mode
 
-    def update_instruction(self, instruction_text: str, pointing_controller, progress=None):
+    def update_instruction(self, instruction_text: str, pointing_controller, progress=None, color=None):
         if progress:
             self.progress = progress
         if instruction_text in self._CALIB_CORNERS:
@@ -197,7 +213,7 @@ class OverlayWindow(QtWidgets.QWidget):
         else:
             if instruction_text == 'complete':
                 self.keep_instruction_visible = False
-            self.__set_instruction(instruction_text)
+            self.__set_instruction(instruction_text, color=color)
 
     def update_pointing_target(self, target: tuple[int, int]):
         self.pointing_target = target

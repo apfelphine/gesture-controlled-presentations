@@ -123,7 +123,7 @@ def get_hand_rectangle(pose, index, frame, hand: Literal["left", "right"]):
             result.segmentation_masks[0],
         )
 
-    return ((0, 0), (0, 0)), 0, None
+    return ((0, 0), (0, 0)), None, None
 
 
 def draw_rectangle(frame, rect, color=(0, 255, 0), thickness=3):
@@ -167,28 +167,32 @@ def detect_and_write_hand(
     # visibility = visibility of least visible hand landmark
     # segmentation_mask_frame = segmentation_mask of person on entire frame
 
-    if visibility >= VISIBILITY_THRESHOLD:
-        cropped_palm = draw_cropped(frame, rect)
+    if visibility is None or visibility >= VISIBILITY_THRESHOLD:
+        if visibility is not None:
+            cropped_palm = draw_cropped(frame, rect)
+        else:
+            cropped_palm = frame
 
         if cropped_palm is not None and len(cropped_palm) != 0:
-            visualized_mask = (
-                np.repeat(
-                    segmentation_mask_frame.numpy_view()[:, :, np.newaxis], 3, axis=2
+            if segmentation_mask_frame is not None:
+                visualized_mask = (
+                    np.repeat(
+                        segmentation_mask_frame.numpy_view()[:, :, np.newaxis], 3, axis=2
+                    )
+                    * 255
                 )
-                * 255
-            )
-            visualized_mask = visualized_mask.astype(np.uint8)
-            cropped_mask = draw_cropped(visualized_mask, rect)
+                visualized_mask = visualized_mask.astype(np.uint8)
+                cropped_mask = draw_cropped(visualized_mask, rect)
 
             try:
                 cropped_palm_resized = resize(
                     cropped_palm, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE
                 )
-                cropped_mask_resized = resize(
-                    cropped_mask, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE
-                )
+                if segmentation_mask_frame is not None:
+                    cropped_mask_resized = resize(
+                        cropped_mask, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE
+                    )
             except Exception as e:
-                print("Failed to crop rect ", rect)
                 return False
 
             if index is not None:
@@ -215,30 +219,32 @@ def detect_and_write_hand(
                     HAND_LANDMARK_BUFFER_PERCENTAGE,
                 )
                 cropped_hand = draw_cropped(cropped_palm_resized, square)
-                cropped_hand_mask = draw_cropped(cropped_mask_resized, square)
+                if segmentation_mask_frame is not None:
+                    cropped_hand_mask = draw_cropped(cropped_mask_resized, square)
 
                 try:
                     final_hand = resize(
                         cropped_hand, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE
                     )
-                    final_mask = resize(
-                        cropped_hand_mask, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE
-                    )
+                    if segmentation_mask_frame is not None:
+                        final_mask = resize(
+                            cropped_hand_mask, FINAL_IMAGE_SIZE, FINAL_IMAGE_SIZE
+                        )
 
-                    final_mask_gray = cv2.cvtColor(final_mask, cv2.COLOR_BGR2GRAY)
+                        final_mask_gray = cv2.cvtColor(final_mask, cv2.COLOR_BGR2GRAY)
 
-                    # Binarize mask (assumes white areas are hand, black is background)
-                    _, binary_mask = cv2.threshold(
-                        final_mask_gray, 127, 255, cv2.THRESH_BINARY
-                    )
+                        # Binarize mask (assumes white areas are hand, black is background)
+                        _, binary_mask = cv2.threshold(
+                            final_mask_gray, 127, 255, cv2.THRESH_BINARY
+                        )
 
-                    # Apply mask to the hand
-                    final_hand_masked = cv2.bitwise_and(
-                        final_hand, final_hand, mask=binary_mask
-                    )
+                        # Apply mask to the hand
+                        final_hand_masked = cv2.bitwise_and(
+                            final_hand, final_hand, mask=binary_mask
+                        )
+                        current_hash_mask = hasher.compute(final_hand_masked)
 
                     current_hash = hasher.compute(final_hand)
-                    current_hash_mask = hasher.compute(final_hand_masked)
 
                     is_different = True
 
@@ -247,14 +253,16 @@ def detect_and_write_hand(
                         if dist < HASH_DISTANCE_THRESHOLD:
                             is_different = False
                             break
-                        dist = cv2.norm(current_hash_mask, h, cv2.NORM_HAMMING)
-                        if dist < HASH_DISTANCE_THRESHOLD:
-                            is_different = False
-                            break
+                        if segmentation_mask_frame is not None:
+                            dist = cv2.norm(current_hash_mask, h, cv2.NORM_HAMMING)
+                            if dist < HASH_DISTANCE_THRESHOLD:
+                                is_different = False
+                                break
 
                     if is_different:
                         prev_hashes.append(current_hash)
-                        prev_hashes.append(current_hash_mask)
+                        if segmentation_mask_frame is not None:
+                            prev_hashes.append(current_hash_mask)
                         if index is not None:
                             cv2.imwrite(
                                 os.path.join(out_path, str(index) + ".png"), final_hand

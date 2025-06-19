@@ -21,6 +21,7 @@ def get_data():
 
 def train(train_data, validation_data):
     hparams = gesture_recognizer.HParams(export_dir="gesture_recognizer_model")
+    hparams.epochs = 10
     options = gesture_recognizer.GestureRecognizerOptions(hparams=hparams)
     model = gesture_recognizer.GestureRecognizer.create(
         train_data=train_data, validation_data=validation_data, options=options

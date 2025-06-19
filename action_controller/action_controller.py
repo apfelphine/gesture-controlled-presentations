@@ -214,3 +214,6 @@ class ActionController:
             ), frame
 
         return ActionClassificationResult(hand=hand), self._num_last_hands
+
+    def set_enabled_gestures(self, gestures):
+        self._enabled_gestures = gestures

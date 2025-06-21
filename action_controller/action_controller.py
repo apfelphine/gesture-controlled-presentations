@@ -44,8 +44,8 @@ class ActionClassificationResult:
 
 class ActionController:
     ALL_GESTURES = [
-            "pinky-point", "thumb-point", "thumbs-up", "2finger", "point", "swipe"
-        ]
+        "pinky-point", "thumb-point", "thumbs-up", "2finger", "point"  #, "swipe"
+    ]
 
     def __init__(self):
         self._enabled_gestures = self.ALL_GESTURES
@@ -58,21 +58,22 @@ class ActionController:
             _Handedness.RIGHT: HandLogGesture(deque(maxlen=self._num_last_hands)),
         }
 
-    def __call__(self, gesture_recognizer_result: mp.tasks.vision.GestureRecognizerResult) -> ActionClassificationResult:
+    def __call__(self,
+                 gesture_recognizer_result: mp.tasks.vision.GestureRecognizerResult) -> ActionClassificationResult:
         gesture_recognition_result_dict: Dict[_Handedness, GestureRecognitionResult] = {
             _Handedness.LEFT: GestureRecognitionResult(),
             _Handedness.RIGHT: GestureRecognitionResult(),
         }
 
         if (
-            gesture_recognizer_result.gestures and
-            gesture_recognizer_result.hand_landmarks and
-            gesture_recognizer_result.handedness
+                gesture_recognizer_result.gestures and
+                gesture_recognizer_result.hand_landmarks and
+                gesture_recognizer_result.handedness
         ):
             for gesture_group, hand_landmarks, handedness in zip(
-                gesture_recognizer_result.gestures,
-                gesture_recognizer_result.hand_landmarks,
-                gesture_recognizer_result.handedness,
+                    gesture_recognizer_result.gestures,
+                    gesture_recognizer_result.hand_landmarks,
+                    gesture_recognizer_result.handedness,
             ):
                 hand_label = handedness[0].category_name.lower()
                 if gesture_group:
@@ -127,9 +128,9 @@ class ActionController:
 
     @staticmethod
     def _get_action_from_gesture(
-        gesture_name: str,
-        hand_landmarks: List[NormalizedLandmark],
-        hand: _Handedness,
+            gesture_name: str,
+            hand_landmarks: List[NormalizedLandmark],
+            hand: _Handedness,
     ) -> Optional[Action]:
         if gesture_name == "point":
             return Action.POINT
@@ -153,9 +154,9 @@ class ActionController:
         return None
 
     def _get_triggered_action_from_last_results(
-        self,
-        hand: _Handedness,
-        last_results: List[GestureRecognitionResult]
+            self,
+            hand: _Handedness,
+            last_results: List[GestureRecognitionResult]
     ) -> (ActionClassificationResult, int):
         gesture_count: Dict[(str, Action), (float, float, int)] = {}
         max_key = None
@@ -174,7 +175,8 @@ class ActionController:
                     delta_x = p1.x - p0.x
                     avg_z = (abs(p1.z) + abs(p0.z)) / 2 or 0.01
                     scaled_dx = round(delta_x / avg_z, 2)
-                    current = current + min(self._min_swipe_distance, scaled_dx) if scaled_dx * current >= 0 else scaled_dx
+                    current = current + min(self._min_swipe_distance,
+                                            scaled_dx) if scaled_dx * current >= 0 else scaled_dx
                     threshold = self._min_swipe_distance
                 if threshold != 0:
                     percent = abs(current) / threshold

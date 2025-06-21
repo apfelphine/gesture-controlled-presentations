@@ -141,9 +141,10 @@ gesture_challenges = [
                       lambda action_res,
                              hands: action_res.gesture == "thumbs-up" and action_res.action == "prev" and action_res.hand == "left"), hands_down_inst),
 ]
+random.seed(42)
+random.shuffle(gesture_challenges)
 
 latin_square = [gesture_challenges[i:] + gesture_challenges[:i] for i in range(len(gesture_challenges))]
-random.seed(42)
 random.shuffle(latin_square)
 
 num_runs = sum(
@@ -287,6 +288,10 @@ try:
                         )
 
                     if cv2.waitKey(1) & 0xFF == 27:
+                        break
+
+                    if len(gesture_challenges) == 0 and len(pointing_challenges) == 0:
+                        time.sleep(5)
                         break
 except KeyboardInterrupt:
     print("Programm interrupted by user.")

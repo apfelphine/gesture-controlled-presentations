@@ -104,6 +104,8 @@ class OverlayWindow(QtWidgets.QWidget):
         self.pointer_mode = PointerMode.DOT
         self.pointing_target = None
 
+        self.active_gesture_set = None
+
         self.show()
 
     @staticmethod
@@ -221,6 +223,7 @@ class OverlayWindow(QtWidgets.QWidget):
     def paintEvent(self, event):
         self.__draw_action_result()
         self.__draw_hand_skeleton()
+        self.__draw_active_gesture_set()
 
         self.__draw_instruction()
         self.__draw_pointing_target()
@@ -450,6 +453,35 @@ class OverlayWindow(QtWidgets.QWidget):
             hand_width_px = (max(lm.x for lm in mirrored_landmarks) - min_x) * scale
             current_x += hand_width_px + hand_spacing
 
+    def __draw_active_gesture_set(self):
+        if self.active_gesture_set is None:
+            return
+
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+
+        text = f"Aktives Gestenset: {self.active_gesture_set}"
+        font = QtGui.QFont("Arial", 14, QtGui.QFont.Bold)
+        painter.setFont(font)
+
+        padding = 10
+        margin = 20
+        fm = QtGui.QFontMetrics(font)
+        rect_txt = fm.boundingRect(text)
+
+        rect_bg = QtCore.QRect(
+            self.width() - rect_txt.width() - 2 * padding - margin,
+            margin,
+            rect_txt.width() + 2 * padding,
+            rect_txt.height() + 2 * padding
+        )
+
+        painter.setBrush(QtGui.QColor(0, 0, 0, 180))
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.drawRoundedRect(rect_bg, 8, 8)
+        painter.setPen(QtGui.QColor(255, 255, 255))
+        painter.drawText(rect_bg.adjusted(padding, padding, -padding, -padding),
+                         QtCore.Qt.AlignCenter, text)
 
 class OverlayContextManager:
 

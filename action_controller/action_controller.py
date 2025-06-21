@@ -43,10 +43,12 @@ class ActionClassificationResult:
 
 
 class ActionController:
-    def __init__(self):
-        self._enabled_gestures = [
-            "pinky-point", "thumb-point", "thumbs-up", "2finger", "point",  # "swipe"
+    ALL_GESTURES = [
+            "pinky-point", "thumb-point", "thumbs-up", "2finger", "point", "swipe"
         ]
+
+    def __init__(self):
+        self._enabled_gestures = self.ALL_GESTURES
         self._num_last_hands = 30
         self._min_trigger_frame_count = 4
         self._min_exit_frame_count = 6
@@ -216,4 +218,7 @@ class ActionController:
         return ActionClassificationResult(hand=hand), self._num_last_hands
 
     def set_enabled_gestures(self, gestures):
-        self._enabled_gestures = gestures
+        self._enabled_gestures = list(filter(lambda x: x in gestures, self.ALL_GESTURES))
+
+    def get_enabled_gestures(self):
+        return self._enabled_gestures

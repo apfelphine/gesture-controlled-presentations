@@ -53,7 +53,7 @@ class PointerController:
         if edge_grace_frac is not None:
             self.EDGE_GRACE_FRAC = edge_grace_frac
         self._calib_idx: int = 0
-        self._calib_samples: deque[Tuple[int, int]] = deque(maxlen=120)
+        self._calib_samples: deque[Tuple[int, int]] = deque(maxlen=60)
         self._camera_corners: List[Tuple[int, int]] = []
         self._smooth_buffer: deque[Tuple[int, int]] = deque(maxlen=self.SMOOTH_WIN)
         self._last_pointer_ts: float = 0.0

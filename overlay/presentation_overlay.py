@@ -58,14 +58,14 @@ class OverlayWindow(QtWidgets.QWidget):
             return
 
         if self.action_color != (0, 255, 0):
-            text = f"{action_result.action.value.upper()} ({action_result.gesture} / {action_result.hand.value})"
+            text = f"Recognized action: {action_result.action.value.capitalize()} "
             if action_result.swipe_distance is not None:
                 text += (
-                    f" - swipe distance: {str(abs(round(action_result.swipe_distance, 2)))}/"
-                    f"{action_result.min_swipe_distance}"
+                    f"({str(abs(round(action_result.swipe_distance, 2)))}/"
+                    f"{action_result.min_swipe_distance})"
                 )
             elif action_result.count is not None:
-                text += f" - count: {action_result.count}/{action_result.min_count}"
+                text += f"({action_result.count}/{action_result.min_count})"
             self.action_text = text
 
         if action_result.triggered:
@@ -179,7 +179,7 @@ class OverlayWindow(QtWidgets.QWidget):
                         QtCore.Qt.AlignCenter, self.instruction_text)
 
         if show_corner:
-            bar_w, bar_h = 220, 14
+            bar_w, bar_h = 440, 56
             bar_x = (self.width() - bar_w) // 2
             bar_y = rect_bg.bottom() + 16
             painter.setBrush(QtGui.QColor(255, 255, 255, 60))

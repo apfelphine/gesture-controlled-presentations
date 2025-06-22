@@ -1,6 +1,7 @@
 import datetime
 import math
 import os
+import random
 import time
 from enum import Enum
 import cv2
@@ -28,7 +29,7 @@ video = cv2.VideoCapture(0)
 
 folder_name = ""
 if recording_mode is not RecordingMode.NONE:
-    folder_name = f"recordings/{datetime.datetime.now().strftime('%Y%d%m_%H_%M')}"
+    folder_name = f"recordings/{datetime.datetime.now().strftime('%Y%d%m_%H_%M')}_metrics"
     os.makedirs(folder_name, exist_ok=True)
 
 camera_writer = None
@@ -60,6 +61,8 @@ if recording_mode != RecordingMode.NONE:
     csv_writer.writerow(col_names)
 
 metrics = []
+
+
 def cleanup():
     video.release()
     if camera_writer:
@@ -71,6 +74,7 @@ def cleanup():
     csv_writer_metrics = csv.writer(csv_file_metrics)
     csv_writer_metrics.writerow([
         "instruction",
+        "hand",
         "time",
         "frame_count",
         "distance"
@@ -98,35 +102,66 @@ start = time.perf_counter()
 challenge_start = start
 challenge_frame_count = 0
 
-
 action_controller = ActionController()
 
-gesture_challenges = [
-    ("Hebe die rechte Hand und nutze sie für die folgenden Aufgaben",
-     lambda action_res, hands: "Right" in hands and "Left" not in hands),
-    ("Zeige mit deinem kleinen Finger nach oben...",
-     lambda action_res, hands: action_res.gesture == "pinky-point" and action_res.action == "next" and action_res.hand == "right"),
-    ("Zeige mit deinem Daumen nach links...",
-     lambda action_res, hands: action_res.gesture == "thumb-point" and action_res.action == "prev"and action_res.hand == "right"),
-    ("Zeige mit zwei Fingern nach links...",
-     lambda action_res, hands: action_res.gesture == "2finger" and action_res.action == "prev" and action_res.hand == "right"),
-    ("Zeige Daumen hoch",
-     lambda action_res, hands: action_res.gesture == "thumbs-up" and action_res.action == "next" and action_res.hand == "right"),
+hands_down_inst = ("Nehm die Hand runter",
+                  lambda action_res,
+                         hands: "Left" not in hands and "Right" not in hands and action_res.action is None and action_res.gesture is None)
+right_hand_inst = ("Hebe die rechte Hand ohne eine Geste zu zeigen",
+                   lambda action_res,
+                          hands: "Right" in hands and "Left" not in hands and action_res.action is None and action_res.gesture is None)
+left_hand_inst = ("Hebe die linke Hand ohne eine Geste zu zeigen",
+                  lambda action_res,
+                         hands: "Left" in hands and "Right" not in hands and action_res.action is None and action_res.gesture is None)
 
-    ("Hebe die linke Hand und nutze sie für die folgenden Aufgaben", lambda action_res, hands: "Left" in hands and "Right" not in hands),
-    ("Zeige mit dem kleinen Finger nach oben...",
-     lambda action_res, hands: action_res.gesture == "pinky-point" and action_res.action == "prev" and action_res.hand == "left"),
-    ("Zeige mit dem Daumen nach rechts...",
-     lambda action_res, hands: action_res.gesture == "thumb-point" and action_res.action == "next" and action_res.hand == "left"),
-    ("Zeige mit zwei Fingern nach rechts...",
-     lambda action_res, hands: action_res.gesture == "2finger" and action_res.action == "next" and action_res.hand == "left"),
-    ("Zeige Daumen hoch",
-     lambda action_res, hands: action_res.gesture == "thumbs-up" and action_res.action == "prev" and action_res.hand == "left"),
+gesture_challenges = [
+    (right_hand_inst, ("Zeige mit dem kleinen Finger nach oben...",
+                       lambda action_res,
+                              hands: action_res.gesture == "pinky-point" and action_res.action == "next" and action_res.hand == "right"), hands_down_inst),
+    (right_hand_inst, ("Zeige mit deinem Daumen nach links...",
+                       lambda action_res,
+                              hands: action_res.gesture == "thumb-point" and action_res.action == "prev" and action_res.hand == "right"), hands_down_inst),
+    (right_hand_inst, ("Zeige mit zwei Fingern nach links...",
+                       lambda action_res,
+                              hands: action_res.gesture == "2finger" and action_res.action == "prev" and action_res.hand == "right"), hands_down_inst),
+    (right_hand_inst, ("Zeige Daumen hoch",
+                       lambda action_res,
+                              hands: action_res.gesture == "thumbs-up" and action_res.action == "next" and action_res.hand == "right"), hands_down_inst),
+
+    (left_hand_inst, ("Zeige mit dem kleinen Finger nach oben...",
+                      lambda action_res,
+                             hands: action_res.gesture == "pinky-point" and action_res.action == "prev" and action_res.hand == "left"), hands_down_inst),
+    (left_hand_inst, ("Zeige mit dem Daumen nach rechts...",
+                      lambda action_res,
+                             hands: action_res.gesture == "thumb-point" and action_res.action == "next" and action_res.hand == "left"), hands_down_inst),
+    (left_hand_inst, ("Zeige mit zwei Fingern nach rechts...",
+                      lambda action_res,
+                             hands: action_res.gesture == "2finger" and action_res.action == "next" and action_res.hand == "left"), hands_down_inst),
+    (left_hand_inst, ("Zeige Daumen hoch",
+                      lambda action_res,
+                             hands: action_res.gesture == "thumbs-up" and action_res.action == "prev" and action_res.hand == "left"), hands_down_inst),
 ]
+random.seed(42)
+random.shuffle(gesture_challenges)
+
+latin_square = [gesture_challenges[i:] + gesture_challenges[:i] for i in range(len(gesture_challenges))]
+random.shuffle(latin_square)
+
+num_runs = sum(
+    1 for name in os.listdir("recordings")
+    if name.endswith('_metrics') and os.path.isdir(os.path.join("recordings", name))
+)
+
+latin_square_num = num_runs % len(latin_square)
+gesture_challenges = [item for tup in latin_square[random.randint(0, latin_square_num)] for item in tup]
 
 # Watch out, depending on screen size:
 pointing_challenges = [(50, 50), (500, 500), (250, 750), (1250, 1250), (750, 1250), (2500, 50), (2500, 1500)]
-challenge_timeout = 1000*5
+
+challenge_timeout = 1000 * 5
+
+waiting_time = 1000 * 2.5
+current_wait_start = None
 
 try:
     with OverlayContextManager() as overlay:
@@ -157,61 +192,85 @@ try:
                     )
 
                     action_result = action_controller(
-                        gesture_detection_result, pose_result
+                        gesture_detection_result
                     )
 
                     calibrating = False
-                    if len(gesture_challenges) > 0:
+
+                    if current_wait_start is not None:
+                        current_wait_time = int((now - current_wait_start) * 1000.0)
+                        if current_wait_time > waiting_time:
+                            challenge_frame_count = 0
+                            current_wait_start = None
+                            challenge_start = now
+                    elif len(gesture_challenges) > 0:
                         hands = [h[0].category_name for h in gesture_detection_result.handedness]
                         inst, finished_funct = gesture_challenges[0]
 
                         if finished_funct(action_result, hands):
-                            gesture_challenges.pop(0)
                             challenge_time = int((now - challenge_start) * 1000.0)
+                            gesture_challenges.pop(0)
                             metrics.append([inst, challenge_time, challenge_frame_count, None])
-                            challenge_start = now
-                            challenge_frame_count = 0
+                            current_wait_start = now
+
+                            if " ohne eine Geste zu zeigen" in inst:
+                                instruction = "Hand erkannt. Nutze die Hand für die nächste Aufgabe."
+                            elif inst == "Nehm die Hand runter":
+                                instruction = "Sehr gut. Keine Hand erkannt."
+                                current_wait_start -= 1
+                            else:
+                                instruction = "Sehr gut. Geste erkannt."
+                                current_wait_start -= 0.5
+                                metrics.append([inst, action_result.hand, challenge_time, challenge_frame_count, None])
+                            overlay.update_instruction(instruction, pointing_controller, color=(60, 240, 60))
                         else:
                             challenge_frame_count += 1
 
-
-                    if len(gesture_challenges) > 0:
-                        instruction = gesture_challenges[0][0]
-                        overlay.update_instruction(instruction, pointing_controller)
-                    elif len(pointing_challenges) > 0:
-                        if not pointing_controller.state == PointerState.ACTIVE:
-                            # need to calibrate first
-                            pointing_result = pointing_controller(gesture_detection_result, action_result, frame)
-                            overlay.update_instruction(pointing_result.prompt, pointing_controller, pointing_result.progress)
-                            overlay.update()
-                            challenge_start = now
-                        else:
-                            pointing_result = pointing_controller(gesture_detection_result, action_result, frame)
-                            overlay.update_pointer(
-                                pointing_result.position, pointing_controller.mode
-                            )
-                            overlay.update_instruction("Zeige auf den Punkt", pointing_controller)
-                            point_target = pointing_challenges[0]
-                            if pointing_result.position is not None:
-                                distance = math.dist(pointing_result.position, point_target)
-                                radius_target = 36
-                                radius_pointer = 12
-                                challenge_time = int((now - challenge_start) * 1000.0)
-                                if distance < (radius_pointer + radius_target) or challenge_time >= challenge_timeout:
-                                    pointing_challenges.pop(0)
-                                    metrics.append([point_target, challenge_time, challenge_frame_count, max(0, distance - (radius_pointer + radius_target))])
-                                    challenge_start = now
-                                    challenge_frame_count = 0
-                                else:
-                                    challenge_frame_count += 1
-
-                            if len(pointing_challenges) > 0 and pointing_controller.state != PointerState.CALIBRATING:
+                    if current_wait_start is None:
+                        if len(gesture_challenges) > 0:
+                            instruction = gesture_challenges[0][0]
+                            overlay.update_instruction(instruction, pointing_controller)
+                        elif len(pointing_challenges) > 0:
+                            action_controller.set_enabled_gestures(["point"])
+                            if not pointing_controller.state == PointerState.ACTIVE:
+                                # need to calibrate first
+                                pointing_result = pointing_controller(gesture_detection_result, action_result, frame)
+                                overlay.update_instruction(pointing_result.prompt, pointing_controller,
+                                                           pointing_result.progress)
+                                overlay.update()
+                                challenge_start = now
+                            else:
+                                pointing_result = pointing_controller(gesture_detection_result, action_result, frame)
+                                overlay.update_pointer(
+                                    pointing_result.position, pointing_controller.mode
+                                )
+                                overlay.update_instruction("Zeige auf den Punkt", pointing_controller)
                                 point_target = pointing_challenges[0]
-                                overlay.update_pointing_target(point_target)
+                                if pointing_result.position is not None:
+                                    distance = math.dist(pointing_result.position, point_target)
+                                    radius_target = 36
+                                    radius_pointer = 12
+                                    challenge_time = int((now - challenge_start) * 1000.0)
+                                    if distance < (
+                                            radius_pointer + radius_target) or challenge_time >= challenge_timeout:
+                                        pointing_challenges.pop(0)
+                                        metrics.append([point_target, challenge_time, challenge_frame_count,
+                                                        max(0, distance - (radius_pointer + radius_target))])
+                                        challenge_start = now
+                                        challenge_frame_count = 0
+                                    else:
+                                        challenge_frame_count += 1
+
+                                if len(pointing_challenges) > 0 and pointing_controller.state != PointerState.CALIBRATING:
+                                    point_target = pointing_challenges[0]
+                                    overlay.update_pointing_target(point_target)
 
                     if len(gesture_challenges) == 0 and len(pointing_challenges) == 0:
                         overlay.update_instruction("Messung abgeschlossen. Vielen Dank.", pointing_controller)
 
+                    overlay.update_action_text(
+                        gesture_detection_result, action_result, show_action=len(gesture_challenges) == 0
+                    )
                     overlay.update()
 
                     # Record camera
@@ -229,6 +288,10 @@ try:
                         )
 
                     if cv2.waitKey(1) & 0xFF == 27:
+                        break
+
+                    if len(gesture_challenges) == 0 and len(pointing_challenges) == 0:
+                        time.sleep(5)
                         break
 except KeyboardInterrupt:
     print("Programm interrupted by user.")

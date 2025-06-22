@@ -5,6 +5,8 @@ from enum import Enum
 import cv2
 import pyautogui
 import csv
+import keyboard
+
 
 import mediapipe as mp
 
@@ -23,7 +25,7 @@ class RecordingMode(str, Enum):
     CAMERA = "camera"
 
 
-recording_mode = RecordingMode.ONLY_LANDMARKS
+recording_mode = RecordingMode.NONE
 video = cv2.VideoCapture(0)
 
 folder_name = ""
@@ -115,7 +117,7 @@ try:
                     )
 
                     action_result = action_controller(
-                        gesture_detection_result, pose_result
+                        gesture_detection_result
                     )
 
                     pointing_result = pointing_controller(
@@ -134,8 +136,8 @@ try:
                         pointing_result.position, pointing_controller.mode
                     )
                     overlay.update_instruction(pointing_result.prompt, pointing_controller, pointing_result.progress)
-                    overlay.update_action_result(action_result)
-                    overlay.update()
+                    overlay.update_action_text(gesture_detection_result, action_result)
+
 
                     # Record camera
                     if camera_writer is not None:
@@ -151,6 +153,27 @@ try:
                             action_result,
                         )
 
+                    if keyboard.is_pressed('alt gr') and keyboard.is_pressed('1'):
+                        if action_controller.get_enabled_gestures() != action_controller.ALL_GESTURES:
+                            action_controller.set_enabled_gestures(action_controller.ALL_GESTURES)
+                            overlay.active_gesture_set = None
+                    elif keyboard.is_pressed('alt gr') and keyboard.is_pressed('2'):
+                        gestures = ["point", "pinky-point", "thumb-point"]
+                        if action_controller.get_enabled_gestures() != gestures:
+                            action_controller.set_enabled_gestures(gestures)
+                            overlay.active_gesture_set = "Zeigen mit Daumen / kleinem Finger"
+                    elif keyboard.is_pressed('alt gr') and keyboard.is_pressed('3'):
+                        gestures = ["2finger"]
+                        if action_controller.get_enabled_gestures() != gestures:
+                            action_controller.set_enabled_gestures(gestures)
+                            overlay.active_gesture_set = "Zeigen mit zwei Fingern"
+                    elif keyboard.is_pressed('alt gr') and keyboard.is_pressed('4'):
+                        gestures = ["thumbs-up"]
+                        if action_controller.get_enabled_gestures() != gestures:
+                            action_controller.set_enabled_gestures(gestures)
+                            overlay.active_gesture_set = "Daumen hoch"
+
+                    overlay.update()
                     if cv2.waitKey(1) & 0xFF == 27:
                         break
 except KeyboardInterrupt:

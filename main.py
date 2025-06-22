@@ -121,7 +121,7 @@ try:
                     )
 
                     pointing_result = pointing_controller(
-                        gesture_detection_result, action_result, frame
+                        pose_result, gesture_detection_result, action_result, frame
                     )
 
                     # Running mode:

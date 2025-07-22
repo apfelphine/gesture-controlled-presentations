@@ -234,13 +234,13 @@ try:
                             action_controller.set_enabled_gestures(["point"])
                             if not pointing_controller.state == PointerState.ACTIVE:
                                 # need to calibrate first
-                                pointing_result = pointing_controller(gesture_detection_result, action_result, frame)
+                                pointing_result = pointing_controller(pose_result, gesture_detection_result, action_result, frame)
                                 overlay.update_instruction(pointing_result.prompt, pointing_controller,
                                                            pointing_result.progress)
                                 overlay.update()
                                 challenge_start = now
                             else:
-                                pointing_result = pointing_controller(gesture_detection_result, action_result, frame)
+                                pointing_result = pointing_controller(pose_result, gesture_detection_result, action_result, frame)
                                 overlay.update_pointer(
                                     pointing_result.position, pointing_controller.mode
                                 )

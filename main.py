@@ -163,12 +163,12 @@ try:
                             action_controller.set_enabled_gestures(gestures)
                             overlay.active_gesture_set = "Zeigen mit Daumen / kleinem Finger"
                     elif keyboard.is_pressed('alt gr') and keyboard.is_pressed('3'):
-                        gestures = ["2finger"]
+                        gestures = ["point", "2finger"]
                         if action_controller.get_enabled_gestures() != gestures:
                             action_controller.set_enabled_gestures(gestures)
                             overlay.active_gesture_set = "Zeigen mit zwei Fingern"
                     elif keyboard.is_pressed('alt gr') and keyboard.is_pressed('4'):
-                        gestures = ["thumbs-up"]
+                        gestures = ["point", "thumbs-up"]
                         if action_controller.get_enabled_gestures() != gestures:
                             action_controller.set_enabled_gestures(gestures)
                             overlay.active_gesture_set = "Daumen hoch"
